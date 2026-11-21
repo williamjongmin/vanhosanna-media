@@ -28,16 +28,16 @@
 }
 
 :root {
-    --primary: #242832;
-    --primary-lighter: #2f3542;
-    --primary-darker: #191923;
-    --primary-darkest: #12121c;
+    --primary: #202923;
+    --primary-lighter: #303C33;
+    --primary-darker: #151E18;
+    --primary-darkest: #0D1510;
     --text: #f0f0ff;
     --textInvert: #131313;
-    --secondary: #f0008c;
-    --secondary-opacity: rgba(240, 0, 140, 0.5);
-    --secondary-text: #f0f0ff;
-    --transparent: #232530;
+    --secondary: #19C536;
+    --secondary-opacity: rgba(25, 197, 54, 0.5);
+    --secondary-text: #082510;
+    --transparent: #1B261E;
 
     --accent: #90caf9;
 
