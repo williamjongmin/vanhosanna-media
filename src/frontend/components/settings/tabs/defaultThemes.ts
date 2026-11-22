@@ -9,15 +9,15 @@ export const defaultThemes: { [key: string]: Themes } = {
             size: "1em"
         },
         colors: {
-            primary: "#242832",
-            "primary-lighter": "#2f3542",
-            "primary-darker": "#191923",
-            "primary-darkest": "#12121c",
+            primary: "#202923",
+            "primary-lighter": "#303C33",
+            "primary-darker": "#151E18",
+            "primary-darkest": "#0D1510",
             text: "#f0f0ff",
             textInvert: "#131313",
-            "secondary-text": "#f0f0ff",
-            secondary: "#F0008C",
-            "secondary-opacity": "rgba(240, 0, 140, 0.5)",
+            "secondary-text": "#082510",
+            secondary: "#19C536",
+            "secondary-opacity": "rgba(25, 197, 54, 0.5)",
             hover: "rgb(255 255 255 / 0.05)",
             focus: "rgb(255 255 255 / 0.1)"
         }
@@ -30,10 +30,10 @@ export const defaultThemes: { [key: string]: Themes } = {
             size: "1.1em"
         },
         colors: {
-            primary: "#242832",
-            "primary-lighter": "#2f3542",
-            "primary-darker": "#191923",
-            "primary-darkest": "#12121c",
+            primary: "#202923",
+            "primary-lighter": "#303C33",
+            "primary-darker": "#151E18",
+            "primary-darkest": "#0D1510",
             text: "#f0f0ff",
             textInvert: "#131313",
             "secondary-text": "#f0f0ff",
@@ -58,8 +58,8 @@ export const defaultThemes: { [key: string]: Themes } = {
             text: "#333748",
             textInvert: "#f0f0ff",
             "secondary-text": "#131313",
-            secondary: "#F0008C",
-            "secondary-opacity": "rgb(230 52 156 / 0.5)",
+            secondary: "#19C536",
+            "secondary-opacity": "rgba(25, 197, 54, 0.5)",
             hover: "rgb(0 0 0 / 0.05)",
             focus: "rgb(0 0 0 / 0.1)"
         }
@@ -72,10 +72,10 @@ export const defaultThemes: { [key: string]: Themes } = {
             size: "1em"
         },
         colors: {
-            primary: "#242832",
-            "primary-lighter": "#2f3542",
-            "primary-darker": "#191923",
-            "primary-darkest": "#12121c",
+            primary: "#202923",
+            "primary-lighter": "#303C33",
+            "primary-darker": "#151E18",
+            "primary-darkest": "#0D1510",
             text: "#f0f0ff",
             textInvert: "#131313",
             "secondary-text": "#ffffff",
