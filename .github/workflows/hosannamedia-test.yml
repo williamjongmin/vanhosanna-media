@@ -1,15 +1,13 @@
 name: HosannaMedia Windows test installer
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - hosannamedia-branding
 
 permissions:
   contents: read
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/hosannamedia-stable'
     runs-on: windows-latest
     timeout-minutes: 45
     env:
