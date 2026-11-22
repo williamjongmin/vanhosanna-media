@@ -1,12 +1,12 @@
 {
     "$schema": "https://json.schemastore.org/web-manifest-combined.json",
-    "name": "CamShow",
-    "short_name": "CamShow",
+    "name": "HosannaMedia Camera",
+    "short_name": "HosannaMedia Camera",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#242832",
-    "theme_color": "#242832",
-    "description": "A camera app for FreeShow.",
+    "background_color": "#202923",
+    "theme_color": "#202923",
+    "description": "A camera app for HosannaMedia.",
     "icons": [
         {
             "src": "icon.png",

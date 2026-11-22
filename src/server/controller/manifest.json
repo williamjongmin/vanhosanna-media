@@ -1,12 +1,12 @@
 {
     "$schema": "https://json.schemastore.org/web-manifest-combined.json",
-    "name": "ControlShow",
-    "short_name": "ControlShow",
+    "name": "HosannaMedia Controller",
+    "short_name": "HosannaMedia Controller",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#242832",
-    "theme_color": "#242832",
-    "description": "A remote controller app for FreeShow.",
+    "background_color": "#202923",
+    "theme_color": "#202923",
+    "description": "A remote controller app for HosannaMedia.",
     "icons": [
         {
             "src": "icon.png",
