@@ -1,5 +1,9 @@
 const { readdirSync, existsSync, lstatSync, unlinkSync, rmdirSync, readFileSync, writeFileSync, copyFileSync } = require("fs")
 const { join } = require("path")
+const { execFileSync } = require("child_process")
+
+// Generate desktop and remote icons from the church logo before bundling.
+execFileSync(process.execPath, [join(__dirname, "generateHosannaIcons.js")], { stdio: "inherit" })
 
 // app build file paths
 const buildSveltePath = join(__dirname, "..", "public", "build")
