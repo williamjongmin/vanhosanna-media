@@ -8,8 +8,10 @@ interface UpdateData {
 }
 
 export async function getUpdateData(currentVersion: string, includeBeta: boolean): Promise<UpdateData> {
-    const response = await fetch("https://api.github.com/repos/ChurchApps/freeshow/releases")
+    const response = await fetch("https://api.github.com/repos/williamjongmin/vanhosanna-media/releases")
+    if (!response.ok) throw new Error(`Update check failed: ${response.status}`)
     const data = await response.json()
+    if (!Array.isArray(data)) throw new Error("Invalid release response")
 
     const latestAll = data.filter((a: any) => a.draft === false)[0]
     const latestRelease = data.filter((a: any) => a.draft === false && a.prerelease === false)[0]

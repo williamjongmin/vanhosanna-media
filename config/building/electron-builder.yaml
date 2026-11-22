@@ -1,6 +1,10 @@
 appId: app.freeshow
 productName: HosannaMedia
 artifactName: HosannaMedia-${version}-${arch}.${ext}
+publish:
+    provider: github
+    owner: williamjongmin
+    repo: vanhosanna-media
 
 files:
     - build/electron/**
@@ -36,11 +40,6 @@ win:
         - "**/node_modules/sherpa-onnx-*/**"
         - "**/assets/bin/aero-peek-helper.exe"
         - "**/assets/bin/hid-input-helper.exe"
-    azureSignOptions:
-        publisherName: Live Church Solutions
-        endpoint: https://wus2.codesigning.azure.net/
-        certificateProfileName: FreeShow
-        codeSigningAccountName: FreeShow
 
 # linux
 
@@ -59,7 +58,7 @@ linux:
         - AppImage
         - deb
         - rpm
-    icon: build/public
+    icon: build/public/icon.png
 
 deb:
     depends:
@@ -103,7 +102,6 @@ mac:
         com.apple.security.device.camera: true
 
 afterExtract: scripts/opus.js
-afterSign: scripts/macos/notarize.js
 
 dmg:
     background: build/public/dmg.png
