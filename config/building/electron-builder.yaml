@@ -1,6 +1,10 @@
 appId: app.freeshow
-productName: FreeShow
-artifactName: FreeShow-${version}-${arch}.${ext}
+productName: HosannaMedia
+artifactName: HosannaMedia-${version}-${arch}.${ext}
+publish:
+    provider: github
+    owner: williamjongmin
+    repo: vanhosanna-media
 
 # WIDEVINE
 # Use castlabs electron builds to get widevine support
@@ -38,11 +42,6 @@ win:
         - "**/node_modules/libspotifyctl/**/*"
         - "**/node_modules/openmediatransport/**"
         - "**/node_modules/sherpa-onnx-*/**"
-    azureSignOptions:
-        publisherName: Live Church Solutions
-        endpoint: https://wus2.codesigning.azure.net/
-        certificateProfileName: FreeShow
-        codeSigningAccountName: FreeShow
 
 # linux
 
@@ -60,7 +59,7 @@ linux:
         - AppImage
         - deb
         - rpm
-    icon: build/public
+    icon: build/public/icon.png
 
 deb:
     depends:
@@ -101,7 +100,6 @@ mac:
         com.apple.security.device.audio-input: true
         com.apple.security.device.camera: true
 
-afterSign: scripts/macos/notarize.js
 
 dmg:
     background: build/public/dmg.png
