@@ -256,6 +256,20 @@ using (var videoDoc = JsonDocument.Parse("""
         "Nonexistent video is not assumed to be playable");
 }
 
+// In-memory UI dispatch profiling is distinct from physical output latency.
+var metrics = new NativeCueDispatchMetrics(capacity: 4);
+metrics.Record(0, TimeSpan.FromMilliseconds(1));
+metrics.Record(1, TimeSpan.FromMilliseconds(3));
+metrics.Record(2, TimeSpan.FromMilliseconds(5));
+metrics.Record(3, TimeSpan.FromMilliseconds(7));
+metrics.Record(4, TimeSpan.FromMilliseconds(9)); // first oldest sample is evicted
+var summary = metrics.Snapshot();
+Check(summary.Count == 4 && summary.P50Ms == 6, "Bounded UI dispatch sample percentile");
+Check(summary.MaxMs == 9 && summary.P95Ms > summary.P50Ms,
+    "UI dispatch max and p95 are computed independently");
+Check(new NativeCueDispatchMetrics().Snapshot().Count == 0,
+    "No dispatch latency claims before any samples are observed");
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
