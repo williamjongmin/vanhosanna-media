@@ -13,13 +13,16 @@ public static class FreeShowPreviewControlState
     public static FreeShowPreviewSnapshot Prepare(
         FreeShowOutputConfiguration outputs,
         JsonElement overlayDefinitions = default,
-        FreeShowAuxiliaryPreviewState? runtime = null)
+        FreeShowAuxiliaryPreviewState? runtime = null,
+        IReadOnlyDictionary<string, FreeShowOutputState>? currentNativeStates = null)
     {
         ArgumentNullException.ThrowIfNull(outputs);
         var active = outputs.GetActiveNormalOutputs();
         bool outLocked = ShowDocument.IsTrue(outputs.RawSettings, "outLocked");
-        var effects = active.SelectMany(o => ReadStrings(o.Raw, "effects")).ToArray();
-        var overlayIds = active.SelectMany(o => ReadStrings(o.Raw, "overlays")).ToArray();
+        var effects = active.SelectMany(o => ReadStrings(
+            CurrentOutData(o, currentNativeStates), "effects")).ToArray();
+        var overlayIds = active.SelectMany(o => ReadStrings(
+            CurrentOutData(o, currentNativeStates), "overlays")).ToArray();
         bool knownOverlayLocks = overlayDefinitions.ValueKind == JsonValueKind.Object;
         bool hasUnlockedOverlays = false;
         bool hasLockedOverlays = false;
@@ -36,10 +39,10 @@ public static class FreeShowPreviewControlState
             else hasUnlockedOverlays = true;
         }
 
-        var background = ActiveState(active, "background");
-        var slide = ActiveState(active, "slide");
-        var scene = ActiveState(active, "scene");
-        var transition = ActiveState(active, "transition");
+        var background = ActiveState(active, "background", currentNativeStates);
+        var slide = ActiveState(active, "slide", currentNativeStates);
+        var scene = ActiveState(active, "scene", currentNativeStates);
+        var transition = ActiveState(active, "transition", currentNativeStates);
 
         // Original isOutCleared(null) ignores scene and refresh. Their
         // independent presence must not make the Clear all state active.
@@ -97,13 +100,14 @@ public static class FreeShowPreviewControlState
     }
 
     private static PreviewLayerPresence ActiveState(
-        IReadOnlyList<FreeShowConfiguredOutput> active, string key)
+        IReadOnlyList<FreeShowConfiguredOutput> active, string key,
+        IReadOnlyDictionary<string, FreeShowOutputState>? currentNativeStates)
     {
         if (active.Count == 0) return PreviewLayerPresence.Cleared;
         foreach (var output in active)
         {
             var value = ShowDocument.Property(
-                ShowDocument.Property(output.Raw, "out"), key);
+                CurrentOutData(output, currentNativeStates), key);
             if (value.ValueKind is not
                 (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.False))
                 return PreviewLayerPresence.Active;
@@ -111,9 +115,14 @@ public static class FreeShowPreviewControlState
         return PreviewLayerPresence.Cleared;
     }
 
-    private static IEnumerable<string> ReadStrings(JsonElement source, string key)
+    private static JsonElement CurrentOutData(FreeShowConfiguredOutput configured,
+        IReadOnlyDictionary<string, FreeShowOutputState>? currentNativeStates) =>
+        currentNativeStates != null && currentNativeStates.TryGetValue(configured.Id, out var state)
+            ? state.Snapshot() : ShowDocument.Property(configured.Raw, "out");
+
+    private static IEnumerable<string> ReadStrings(JsonElement outData, string key)
     {
-        var list = ShowDocument.Property(ShowDocument.Property(source, "out"), key);
+        var list = ShowDocument.Property(outData, key);
         if (list.ValueKind != JsonValueKind.Array) return [];
         return list.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
             .Select(x => x.GetString() ?? "").Where(x => x.Length > 0);
