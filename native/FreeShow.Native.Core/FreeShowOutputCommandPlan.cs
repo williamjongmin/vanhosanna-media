@@ -141,8 +141,6 @@ public static class FreeShowOutputCommandPlanner
 /// lifecycle (overlay timers, locked-overlay persistence, playback control)
 /// before declaring support. If any capability is missing, reject the plan.
 /// A later visual parity pass must still verify the complete source behavior.
-/// 
-/// cannot perform even one, the entire command is rejected before execution.
 /// </summary>
 public enum FreeShowSourceEffect
 {
