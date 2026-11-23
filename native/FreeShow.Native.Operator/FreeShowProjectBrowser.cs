@@ -42,6 +42,9 @@ public sealed class FreeShowProjectBrowser : UserControl
         manuallyExpanded.Clear();
         manuallyCollapsed.Clear();
         DrawProjectItems();
+        if (navigation.ActiveItem is { } selected)
+            ItemSelected?.Invoke(this,
+                new FreeShowProjectItemSelectedEventArgs(current.ProjectId, selected));
     }
 
     public void Back()
