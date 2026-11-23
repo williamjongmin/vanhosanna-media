@@ -1360,6 +1360,240 @@ using (var liveAudio = JsonDocument.Parse("""
         "Fixed-loop prototype cannot falsely implement original one-shot video playback");
 }
 
+// 0.0.19 — Original OutputHelper.ts keyboard navigation source fixtures.
+// These checks are deliberately authored but NOT executed until Beta 2.
+using (var navShowJson = JsonDocument.Parse("""
+["navigation-show-id",{
+ "name":"Fixture for upstream FreeShow next/previous",
+ "settings":{"activeLayout":"main"},
+ "slides":{
+   "verse":{"items":[{"type":"text","clickReveal":true,"lineReveal":true,
+       "lines":[{"text":[{"value":"A"}]},{"text":[{"value":"B"}]},{"text":[{"value":"C"}]}]}]},
+   "second":{"items":[{"type":"text","lines":[{"text":[{"value":"Next"}]}]}]},
+   "disabled":{"items":[{"type":"text","lines":[{"text":[{"value":"Skip"}]}]}]},
+   "last":{"items":[{"type":"text","lines":[{"text":[{"value":"Final"}]}]}]}
+ },
+ "layouts":{
+   "main":{"slides":[
+      {"id":"verse"},{"id":"second","bindings":["screen2"]},
+      {"id":"disabled","disabled":true},{"id":"last"}]},
+   "loop":{"slides":[
+      {"id":"verse"},{"id":"last","end":true}]}
+ }
+}]
+"""))
+{
+    var source = ShowDocument.Parse(System.Text.Encoding.UTF8.GetBytes(
+        navShowJson.RootElement.GetRawText()));
+    var noSlide = JsonDocument.Parse("{}");
+    var first = FreeShowSlideAdvancePlanner.Prepare(
+        source, noSlide.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.First, 0);
+    Check(first.HasTarget && first.LayoutIndex == 0 &&
+          !first.CanDispatchLive && first.NextOutSlide.ValueKind == JsonValueKind.Object,
+        "Home chooses the source first slide, but never sends a partial live action");
+    var last = FreeShowSlideAdvancePlanner.Prepare(
+        source, noSlide.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Last, 0);
+    Check(last.HasTarget && last.LayoutIndex == 3,
+        "End selects the last eligible expanded source layout index");
+
+    using var currentVerse = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,"line":0}
+""");
+    var revealFirst = FreeShowSlideAdvancePlanner.Prepare(
+        source, currentVerse.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 1);
+    Check(revealFirst.Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
+          ShowDocument.Property(revealFirst.NextOutSlide, "line").GetInt32() == 1 &&
+          ShowDocument.IsTrue(revealFirst.NextOutSlide, "itemClickReveal") &&
+          ShowDocument.Property(revealFirst.NextOutSlide, "revealCount").ValueKind ==
+              JsonValueKind.Undefined,
+        "Next first prioritizes style line, then click reveal before line reveal");
+
+    using var visibleVerse = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":2,"itemClickReveal":true,"revealCount":1}
+""");
+    var nextReveal = FreeShowSlideAdvancePlanner.Prepare(
+        source, visibleVerse.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 1);
+    Check(nextReveal.Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
+          ShowDocument.Property(nextReveal.NextOutSlide, "line").GetInt32() == 3 &&
+          ShowDocument.Property(nextReveal.NextOutSlide, "revealCount").GetInt32() == 2,
+        "Original Next advances both style line and revealCount as OutputHelper specifies");
+
+    var prevReveal = FreeShowSlideAdvancePlanner.Prepare(
+        source, visibleVerse.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Previous, 1);
+    Check(prevReveal.Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
+          ShowDocument.Property(prevReveal.NextOutSlide, "line").GetInt32() == 1 &&
+          ShowDocument.Property(prevReveal.NextOutSlide, "revealCount").GetInt32() == 0,
+        "Previous reverses a reveal step before leaving the current slide");
+
+    using var completeVerse = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "itemClickReveal":true,"revealCount":3}
+""");
+    var nextDisplay1 = FreeShowSlideAdvancePlanner.Prepare(
+        source, completeVerse.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 0, (binding, outputId) =>
+            binding == "screen2" && outputId == "screen1" ? false : null);
+    Check(nextDisplay1.Kind == FreeShowSlideAdvanceKind.ChangeSlide &&
+          nextDisplay1.LayoutIndex == 3,
+        "Source next skips disabled slides and slides bound to other outputs");
+
+    var nextDisplay2 = FreeShowSlideAdvancePlanner.Prepare(
+        source, completeVerse.RootElement, "screen2",
+        FreeShowSlideAdvanceDirection.Next, 0);
+    Check(nextDisplay2.LayoutIndex == 1,
+        "Bound slide remains in the layout for its intended second output");
+
+    var unresolvedBindings = FreeShowSlideAdvancePlanner.Prepare(
+        source, completeVerse.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 0);
+    Check(unresolvedBindings.Kind == FreeShowSlideAdvanceKind.Refused &&
+          unresolvedBindings.Reason?.Contains("binding") == true,
+        "Unknown original synced-output binding cannot be silently skipped");
+
+    using var previousLast = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":3}
+""");
+    var previous = FreeShowSlideAdvancePlanner.Prepare(
+        source, previousLast.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Previous, 0, (binding, outputId) => false);
+    Check(previous.LayoutIndex == 0 &&
+          ShowDocument.IsTrue(previous.NextOutSlide, "itemClickReveal") &&
+          ShowDocument.Property(previous.NextOutSlide, "revealCount").GetInt32() == 3,
+        "Previous skips bound and disabled slides, restoring earlier slide's final reveal");
+
+    using var lastSlide = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":3,"projectIndex":0}
+""");
+    var boundary = FreeShowSlideAdvancePlanner.Prepare(
+        source, lastSlide.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 0);
+    Check(boundary.Kind == FreeShowSlideAdvanceKind.ProjectBoundary,
+        "At final slide, normal Next yields a project item boundary instead of wrapping");
+
+    using var loopLast = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"loop","index":1}
+""");
+    var loop = FreeShowSlideAdvancePlanner.Prepare(
+        source, loopLast.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 0);
+    Check(loop.LayoutIndex == 0 &&
+          loop.Kind == FreeShowSlideAdvanceKind.ChangeSlide,
+        "Original layoutRef[index].data.end loops to the first slide");
+
+    using var wrongShow = JsonDocument.Parse("""
+{"id":"different-show","layout":"main","index":0}
+""");
+    Check(FreeShowSlideAdvancePlanner.Prepare(
+        source, wrongShow.RootElement, "screen1",
+        FreeShowSlideAdvanceDirection.Next, 0).Kind ==
+            FreeShowSlideAdvanceKind.Refused,
+        "Output navigation will not switch to the selected song when current show differs");
+
+    using var projectDoc = JsonDocument.Parse("""
+{
+ "folders":{},
+ "projects":{"sunday":{"name":"Sunday", "parent":"/",
+ "shows":[
+    {"id":"navigation-show-id","type":"show","name":"Praise"},
+    {"id":"section-b","type":"section","name":"Worship","notes":""},
+    {"id":"navigation-show-id","type":"show","name":"Praise Again","layout":"loop"},
+    {"id":"video-b","type":"video","name":"Background"}
+ ]}}
+}
+""");
+    var library = FreeShowProjectLibrary.Parse(projectDoc.RootElement);
+    var projectContent = FreeShowProjectContentProjection.Prepare(
+        library.Find("sunday")!);
+    var projectNext = FreeShowProjectAdvancePlanner.Prepare(
+        projectContent, lastSlide.RootElement, projectContent.ItemAtOriginalIndex(0),
+        FreeShowSlideAdvanceDirection.Next, false, true);
+    Check(projectNext.Status == FreeShowProjectAdvanceStatus.SelectProjectItem &&
+          projectNext.Target?.SourceIndex == 2 &&
+          projectNext.Target.LayoutId == "loop" &&
+          projectNext.SourceSectionActions.Count == 1 &&
+          !projectNext.CanDispatchLive,
+        "Project movement retains repeated Show ID and layout override, skipping empty section");
+    Check(FreeShowProjectAdvancePlanner.ResolveSourceIndex(
+          projectContent, lastSlide.RootElement,
+          projectContent.ItemAtOriginalIndex(2)) == 0,
+        "Source projectIndex outranks duplicated Show ID or active selection");
+    var blockedProject = FreeShowProjectAdvancePlanner.Prepare(
+        projectContent, lastSlide.RootElement, projectContent.ItemAtOriginalIndex(0),
+        FreeShowSlideAdvanceDirection.Next, false, false);
+    Check(blockedProject.Status == FreeShowProjectAdvanceStatus.Refused,
+        "Non-focus project advance respects nextItemOnLastSlide source setting");
+
+    var root = Path.Combine(Path.GetTempPath(),
+        "freeshow-native-navigation-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(Path.Combine(root, "Config"));
+    try
+    {
+        await File.WriteAllTextAsync(Path.Combine(root, "Config", "settings_synced.json"), """
+{"styles":{"styleA":{"lines":2,"layers":["slide","background"]},
+           "styleB":{"lines":1,"layers":["slide"]}}}
+""");
+        var styles = await FreeShowVisualSettings.OpenAsync(root);
+        using var twoOutputs = JsonDocument.Parse("""
+{"outputs":{
+ "screen1":{"name":"Main","enabled":true,"active":true,"style":"styleA",
+  "bounds":{"width":1920,"height":1080},
+  "out":{"slide":{"id":"navigation-show-id","layout":"main",
+                   "index":3,"projectIndex":0}}},
+ "screen2":{"name":"Online","enabled":true,"active":true,"style":"styleB",
+  "bounds":{"width":1920,"height":1080},
+  "out":{"slide":{"id":"navigation-show-id","layout":"main",
+                   "index":0,"line":0,"projectIndex":0}}}
+}}
+""");
+        var config = FreeShowOutputConfiguration.Parse(twoOutputs.RootElement);
+        var context = new FreeShowNavigationSourceContext(config, styles);
+        Check(context.GetStyleLimits().IsAuthoritative &&
+              context.GetStyleLimits().FewestStyleLines == 1,
+            "Original getFewestOutputLines chooses minimum over active output styles");
+
+        var state = config.All.ToDictionary(x => x.Id, x => new FreeShowOutputState(x));
+        var batch = FreeShowMultiOutputAdvanceInspection.Prepare(
+            config, state, context,
+            id => id == source.ShowId ? source : null,
+            FreeShowSlideAdvanceDirection.Next,
+            projectContent, projectContent.ItemAtOriginalIndex(0));
+        Check(batch.Status == FreeShowMultiOutputAdvanceStatus.SlideOrRevealTargets &&
+              batch.OutputPlans["screen1"].Kind == FreeShowSlideAdvanceKind.ProjectBoundary &&
+              batch.OutputPlans["screen2"].Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
+              !batch.CanDispatchLive,
+            "One active output at final slide cannot force another output to leave its current reveal");
+
+        using var bothAtEnd = JsonDocument.Parse("""
+{"outputs":{
+ "screen1":{"name":"Main","enabled":true,"active":true,"style":"styleA",
+  "bounds":{"width":1920,"height":1080},
+  "out":{"slide":{"id":"navigation-show-id","layout":"main","index":3,"projectIndex":0}}},
+ "screen2":{"name":"Online","enabled":true,"active":true,"style":"styleB",
+  "bounds":{"width":1920,"height":1080},
+  "out":{"slide":{"id":"navigation-show-id","layout":"main","index":3,"projectIndex":0}}}
+}}
+""");
+        var ended = FreeShowOutputConfiguration.Parse(bothAtEnd.RootElement);
+        var allReady = FreeShowMultiOutputAdvanceInspection.Prepare(
+            ended, ended.All.ToDictionary(x => x.Id, x => new FreeShowOutputState(x)),
+            new FreeShowNavigationSourceContext(ended, styles),
+            id => id == source.ShowId ? source : null,
+            FreeShowSlideAdvanceDirection.Next,
+            projectContent, projectContent.ItemAtOriginalIndex(0));
+        Check(allReady.Status == FreeShowMultiOutputAdvanceStatus.ProjectSelectionOnly &&
+              allReady.ProjectPlan?.Target?.SourceIndex == 2,
+            "Project transition is offered only when EVERY active output reaches show boundary");
+    }
+    finally { Directory.Delete(root, recursive: true); }
+    noSlide.Dispose();
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
