@@ -22,7 +22,9 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
     public NativeFreeShowOutputSession(
         string outputId, ShowDocument source,
         FreeShowVisualSettings settings, string outputStyleId,
-        string freeShowDataRoot)
+        string freeShowDataRoot,
+        string? existingOutputBackgroundId = null,
+        Func<string, FreeShowMediaReference>? mediaResolver = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputId);
         ArgumentNullException.ThrowIfNull(source);
@@ -34,12 +36,13 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
         OutputId = outputId;
         dataRoot = freeShowDataRoot;
         var frames = FreeShowStyledRenderPlanner.Prepare(source, settings, outputStyleId);
-        var plans = FreeShowOutputLayerPlanner.Prepare(source, settings, outputStyleId);
+        var plans = FreeShowOutputLayerPlanner.Prepare(
+            source, settings, outputStyleId, existingOutputBackgroundId);
         if (frames.Count != plans.Count)
             throw new InvalidDataException("Native source output plans are not aligned.");
 
         videoCues = NativeVideoCuePlanner.Prepare(
-            plans, id => FreeShowMediaLookup.Resolve(source, id));
+            plans, mediaResolver ?? (id => FreeShowMediaLookup.Resolve(source, id)));
         Visual = new NativePersistentVideoOutput();
         Visual.Prepare(frames, plans);
     }
