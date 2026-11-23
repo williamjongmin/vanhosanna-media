@@ -117,7 +117,8 @@ public sealed class OperatorProbeApp : Application
                 if (LocalOutputSettings != null)
                     workspace.RightPreviewHost.Content =
                         new FreeShowPreviewRegion(LocalOutputSettings, selected,
-                        VisualSettings?.Overlays ?? default, outputController: guardedControls);
+                        VisualSettings?.Overlays ?? default, outputController: guardedControls,
+                        originalStyles: VisualSettings);
             }
 
             workspace.RegisterPageRegions("show",
@@ -125,7 +126,8 @@ public sealed class OperatorProbeApp : Application
             if (LocalOutputSettings != null)
                 workspace.RightPreviewHost.Content =
                     new FreeShowPreviewRegion(LocalOutputSettings, Source,
-                    VisualSettings?.Overlays ?? default, outputController: guardedControls);
+                    VisualSettings?.Overlays ?? default, outputController: guardedControls,
+                        originalStyles: VisualSettings);
 
             int selectionVersion = 0;
             CancellationTokenSource? selectionCancellation = null;
