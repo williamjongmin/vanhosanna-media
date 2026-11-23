@@ -107,14 +107,14 @@ public sealed class OperatorProbeApp : Application
                     new FreeShowPageRegions(projectsRegion, center, null));
                 if (LocalOutputSettings != null)
                     workspace.RightPreviewHost.Content =
-                        new FreeShowMultiOutputPreview(LocalOutputSettings, selected);
+                        new FreeShowPreviewRegion(LocalOutputSettings, selected);
             }
 
             workspace.RegisterPageRegions("show",
                 new FreeShowPageRegions(projectsRegion, originalShow, null));
             if (LocalOutputSettings != null)
                 workspace.RightPreviewHost.Content =
-                    new FreeShowMultiOutputPreview(LocalOutputSettings, Source);
+                    new FreeShowPreviewRegion(LocalOutputSettings, Source);
 
             int selectionVersion = 0;
             CancellationTokenSource? selectionCancellation = null;
