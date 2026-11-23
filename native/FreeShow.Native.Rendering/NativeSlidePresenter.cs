@@ -22,7 +22,8 @@ public sealed class NativeSlidePresenter : ContentControl
 
     public void Prepare(IReadOnlyList<NativeFramePlan> frames,
         IReadOnlyList<FreeShowOutputLayerPlan>? outputPlans = null,
-        Func<string, string?>? localStillImagePath = null)
+        Func<string, string?>? localStillImagePath = null,
+        bool lyricsOnlyOverlay = false)
     {
         if (outputPlans != null && outputPlans.Count != frames.Count)
             throw new ArgumentException("Output plan and renderer frame counts differ.", nameof(outputPlans));
@@ -37,7 +38,7 @@ public sealed class NativeSlidePresenter : ContentControl
             var output = outputPlans?[i];
             if (output != null && output.Frame.SlideId != frames[i].Source.SlideId)
                 throw new ArgumentException("Output plan order does not match source frames.", nameof(outputPlans));
-            prepared.Add((frames[i], Build(frames[i], output, localStillImagePath)));
+            prepared.Add((frames[i], Build(frames[i], output, localStillImagePath, lyricsOnlyOverlay)));
         }
     }
 
@@ -61,12 +62,12 @@ public sealed class NativeSlidePresenter : ContentControl
     }
 
     private Viewbox Build(NativeFramePlan frame, FreeShowOutputLayerPlan? output,
-        Func<string, string?>? localStillImagePath)
+        Func<string, string?>? localStillImagePath, bool lyricsOnlyOverlay)
     {
         var canvas = new Canvas
         {
             Width = 1920, Height = 1080,
-            Background = output == null
+            Background = output == null || lyricsOnlyOverlay
                 ? Brushes.Transparent : Brush(output.BackgroundColor, Brushes.Black),
             ClipToBounds = true
         };
@@ -90,7 +91,7 @@ public sealed class NativeSlidePresenter : ContentControl
             });
         }
 
-        if (output != null)
+        if (output != null && !lyricsOnlyOverlay)
         {
             AddStillImage(output.StyleBackgroundId);
             if (output.BackgroundEnabled)
