@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FreeShow.Native.Core/FreeShow.Native.Core.csproj" />
+    <None Include="../Fixtures/sample-show.json" Link="sample-show.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
