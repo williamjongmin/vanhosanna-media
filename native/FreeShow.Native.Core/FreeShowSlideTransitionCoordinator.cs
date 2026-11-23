@@ -67,6 +67,18 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 continue;
             }
 
+            try
+            {
+                if (!runtime.HasPreparedSourceVisual(target))
+                    problems.Add(target.OutputId +
+                        ": exact next original source lyric frame is not prewarmed.");
+            }
+            catch (Exception error)
+            {
+                problems.Add(target.OutputId +
+                    ": source visual readiness check failed: " + error.Message);
+            }
+
             foreach (var phase in FreeShowSlideTransitionOrder.Phases)
             {
                 try
