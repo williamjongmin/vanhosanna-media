@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FreeShow.Native.Rendering/FreeShow.Native.Rendering.csproj" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+  </ItemGroup>
+</Project>
