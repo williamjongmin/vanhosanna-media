@@ -148,6 +148,20 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Source Show/layout/index and exact prewarmed reveal state lookup,
+    /// with no UI mutation or background decoder operation.
+    /// </summary>
+    public bool HasPrewarmedReveal(
+        System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (disposed) return false;
+        int? cue = FindPreparedRevealCue(outSlide);
+        return cue.HasValue && Visual.HasPrewarmedReveal(
+            cue.Value, outSlide, style);
+    }
+
+    /// <summary>
     /// Warm a bounded, source-authoritative sequence before live cue input.
     /// Only a single-output source progression is currently supported.
     /// This is a preparation helper, NOT the missing original updateOut
