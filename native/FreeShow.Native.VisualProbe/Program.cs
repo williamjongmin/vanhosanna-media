@@ -18,17 +18,31 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        bool useOriginalStyle = args.Length == 5 && args[1] == "--data-root" && args[3] == "--style";
-        if (args.Length != 1 && !useOriginalStyle)
+        bool useVideo = args.Length is 3 or 7 &&
+            args[^2] == "--video";
+        bool useOriginalStyle = (args.Length == 5 || (args.Length == 7 && useVideo)) &&
+            args[1] == "--data-root" && args[3] == "--style";
+        bool valid = args.Length == 1 || (args.Length == 3 && useVideo)
+            || (args.Length == 5 && useOriginalStyle)
+            || (args.Length == 7 && useOriginalStyle && useVideo);
+        if (!valid)
         {
             Console.Error.WriteLine("Usage: FreeShow.Native.VisualProbe <source.show>");
             Console.Error.WriteLine("   or: FreeShow.Native.VisualProbe <source.show> --data-root <FreeShow folder> --style <output style id>");
+            Console.Error.WriteLine("   optionally append: --video <existing-local-video-path>");
             return 2;
         }
 
         try
         {
             var source = ShowDocument.ReadAsync(args[0]).GetAwaiter().GetResult();
+            if (useVideo)
+            {
+                var requested = Path.GetFullPath(args[^1]);
+                if (!File.Exists(requested))
+                    throw new FileNotFoundException("Developer probe video missing.", requested);
+                ProbeApp.DeveloperVideoPath = requested;
+            }
             ProbeApp.Frames = NativeRenderPlanner.Prepare(source);
             if (useOriginalStyle)
             {
@@ -59,13 +73,16 @@ public sealed class ProbeApp : Application
     internal static IReadOnlyList<NativeFramePlan> Frames { get; set; } = [];
     internal static IReadOnlyList<FreeShowOutputLayerPlan>? OutputPlans { get; set; }
     internal static Func<string, string?>? LocalStillImagePath { get; set; }
+    internal static string? DeveloperVideoPath { get; set; }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var presenter = new NativeSlidePresenter();
-            presenter.Prepare(Frames, OutputPlans, LocalStillImagePath);
+            var video = DeveloperVideoPath != null ? new NativePersistentVideoOutput() : null;
+            var presenter = video == null ? new NativeSlidePresenter() : null;
+            if (video != null) video.Prepare(Frames, OutputPlans);
+            else presenter!.Prepare(Frames, OutputPlans, LocalStillImagePath);
             var status = new TextBlock
             {
                 Foreground = Brushes.Gold,
@@ -75,7 +92,7 @@ public sealed class ProbeApp : Application
             int index = -1;
             void Show(int next)
             {
-                if (!presenter.Show(next)) return;
+                if (!(video?.ShowCue(next) ?? presenter!.Show(next))) return;
                 index = next;
                 var plan = Frames[index];
                 var layer = OutputPlans?[index];
@@ -89,7 +106,7 @@ public sealed class ProbeApp : Application
             }
 
             var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
-            grid.Children.Add(presenter);
+            grid.Children.Add((Control?)video ?? presenter!);
             Grid.SetRow(status, 1);
             grid.Children.Add(status);
 
@@ -106,6 +123,25 @@ public sealed class ProbeApp : Application
                 if (e.Key == Key.Left) { Show(index - 1); e.Handled = true; }
             };
             desktop.MainWindow = window;
+            if (video != null)
+            {
+                window.Opened += async (_, _) =>
+                {
+                    try
+                    {
+                        await video.SetBackgroundAsync("developer-preview", DeveloperVideoPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        status.Text = "Background video failed: " + ex.Message;
+                    }
+                };
+                window.Closed += async (_, _) =>
+                {
+                    try { await video.DisposeAsync(); }
+                    catch (Exception ex) { Console.Error.WriteLine(ex); }
+                };
+            }
             if (Frames.Count > 0) Show(0);
             else status.Text = "No enabled slides found in selected FreeShow show.";
         }
