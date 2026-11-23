@@ -1294,7 +1294,7 @@ using (var liveAudio = JsonDocument.Parse("""
 {
     var outputVideo = new FreeShowMediaReference(
         "loop-bg", "loop-bg.mp4", NativeMediaKind.Video,
-        Loop:true, Muted:true, default);
+        true, true, default);
     var layer = new NativeVideoLayer("output-background", outputVideo);
     var cue = new NativeVideoCue(0, "verse", [layer], layer, []);
     var ready = FreeShowBackgroundContinuity.Plan(
