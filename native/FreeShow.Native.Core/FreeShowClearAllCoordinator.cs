@@ -164,6 +164,15 @@ public sealed partial class FreeShowOutputCommandCoordinator
         ArgumentNullException.ThrowIfNull(cache);
         ArgumentNullException.ThrowIfNull(slidePositionCache);
 
+        // Clone ephemeral JsonDocument payloads before awaiting the native
+        // output gate; the original audio metadata must survive disposal of
+        // the caller's JSON parser while another command is still running.
+        context = context with
+        {
+            PlayingAudioData = context.PlayingAudioData.ValueKind == JsonValueKind.Array
+                ? context.PlayingAudioData.Clone() : default
+        };
+
         await executeGate.WaitAsync(cancellationToken);
         try
         {
