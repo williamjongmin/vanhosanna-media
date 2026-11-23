@@ -13,18 +13,21 @@ namespace FreeShow.Native.Rendering;
 /// Merely constructing this object does NOT make F1/F2/F3 executable.
 /// The coordinator refuses entire plans until all required hooks exist.
 /// </summary>
-public sealed class NativeFreeShowSessionCommandRuntime : IFreeShowOutputCommandRuntime
+public sealed class NativeFreeShowSessionCommandRuntime : IFreeShowOutputRuntimePlanReadiness
 {
     private readonly NativeFreeShowOutputSession session;
+    private readonly Func<FreeShowSourceEffect, FreeShowOutputCommandPlan, bool>? canExecutePlanEffect;
     private readonly IReadOnlyDictionary<FreeShowSourceEffect,
         Func<FreeShowOutputCommandPlan, CancellationToken, Task>> hookedEffects;
 
     public NativeFreeShowSessionCommandRuntime(
         NativeFreeShowOutputSession source,
         IReadOnlyDictionary<FreeShowSourceEffect,
-            Func<FreeShowOutputCommandPlan, CancellationToken, Task>>? originalEffects = null)
+            Func<FreeShowOutputCommandPlan, CancellationToken, Task>>? originalEffects = null,
+        Func<FreeShowSourceEffect, FreeShowOutputCommandPlan, bool>? planReadiness = null)
     {
         session = source ?? throw new ArgumentNullException(nameof(source));
+        canExecutePlanEffect = planReadiness;
         hookedEffects = originalEffects == null
             ? new Dictionary<FreeShowSourceEffect,
                 Func<FreeShowOutputCommandPlan, CancellationToken, Task>>()
@@ -41,6 +44,11 @@ public sealed class NativeFreeShowSessionCommandRuntime : IFreeShowOutputCommand
     public bool SupportsSourceEffect(FreeShowSourceEffect effect) =>
         effect == FreeShowSourceEffect.ClearSlideOutput || hookedEffects.ContainsKey(effect);
 
+    public bool CanExecuteSourceEffect(
+        FreeShowSourceEffect effect, FreeShowOutputCommandPlan plan) =>
+        plan.OutputId == OutputId && SupportsSourceEffect(effect) &&
+        (canExecutePlanEffect?.Invoke(effect, plan) ?? true);
+
     public async Task ExecuteSourceEffectsAsync(
         FreeShowOutputCommandPlan plan, CancellationToken cancellationToken = default)
     {
@@ -50,7 +58,8 @@ public sealed class NativeFreeShowSessionCommandRuntime : IFreeShowOutputCommand
 
         // Repeat preflight at the backend boundary: it must not rely on a
         // caller bypassing the coordinator's capability check.
-        var missing = plan.RequiredEffects.Where(effect => !SupportsSourceEffect(effect)).ToArray();
+        var missing = plan.RequiredEffects.Where(
+            effect => !CanExecuteSourceEffect(effect, plan)).ToArray();
         if (missing.Length > 0)
             throw new NotSupportedException("Incomplete original FreeShow runtime hooks: " +
                                             string.Join(", ", missing));
