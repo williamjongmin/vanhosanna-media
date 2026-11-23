@@ -203,6 +203,23 @@ try
           "Video is classified but never mistaken for static image");
     Check(FreeShowMediaLookup.Resolve(show, "asset://existing").Id == "asset://existing",
           "Original FreeShow media identity retained");
+
+    var videoLayerPlans = layers.Select(x =>
+        x with { StyleBackgroundId = "unchanged-loop.mp4", OutputBackgroundId = "" }).ToArray();
+    var singleVideo = NativeVideoCuePlanner.Prepare(
+        videoLayerPlans, id => new FreeShowMediaReference(id, id,
+            NativeMediaKind.Video, true, true, default));
+    Check(singleVideo.Count == layers.Count &&
+          singleVideo.All(x => x.SingleSupportedVideo?.Media.Id == "unchanged-loop.mp4"),
+          "Same background is selected for every source lyric cue");
+    Check(singleVideo.All(x => !x.RequiresUnimplementedMultipleVideoMix),
+          "Single video layer stays supported independent of slide index");
+    var dualVideo = NativeVideoCuePlanner.Prepare(
+        videoLayerPlans.Select(x => x with { OutputBackgroundId = "additional.mp4" }).ToArray(),
+        id => new FreeShowMediaReference(id, id, NativeMediaKind.Video, true, true, default));
+    Check(dualVideo.All(x => x.RequiresUnimplementedMultipleVideoMix &&
+          x.Unsupported.Count > 0 && x.SingleSupportedVideo == null),
+          "Multiple FreeShow video layers are flagged, not silently dropped");
 }
 finally
 {
