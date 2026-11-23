@@ -270,6 +270,85 @@ Check(summary.MaxMs == 9 && summary.P95Ms > summary.P50Ms,
 Check(new NativeCueDispatchMetrics().Snapshot().Count == 0,
     "No dispatch latency claims before any samples are observed");
 
+// Native port keeps the original FreeShow output IDs from local SETTINGS
+// rather than inventing a fixed Main/Online/Stage enum.
+using (var settingsDoc = JsonDocument.Parse("""
+{
+ "outputs":{
+   "stageA":{"name":"Confidence","enabled":true,"active":true,"stageOutput":"mainA",
+     "bounds":{"x":1920,"y":0,"width":1280,"height":720},"style":"confidence","screen":"display2"},
+   "mainB":{"name":"Screen 2","enabled":true,"active":false,
+     "bounds":{"x":0,"y":0,"width":1920,"height":1080},"style":"s2","screen":"display1"},
+   "mainA":{"name":"Screen 1","enabled":true,"active":true,
+     "bounds":{"x":1920,"y":0,"width":1920,"height":1080},"style":"s1","screen":"display3"},
+   "disabled":{"name":"Old","enabled":false,"active":true,
+     "bounds":{"x":0,"y":0,"width":1024,"height":768},"style":"old","screen":null}
+ },
+ "outLocked":false,
+ "unsupportedExistingSettings":{"preserve":"raw"}
+}
+"""))
+{
+    var config = FreeShowOutputConfiguration.Parse(settingsDoc.RootElement);
+    Check(config.All.Count == 4 && config.Find("mainA")?.StyleId == "s1",
+        "Original nonfixed output IDs and independent style IDs are preserved");
+    Check(config.GetActiveNormalOutputs().Select(o => o.Id).SequenceEqual(["mainA"]),
+        "Active output selection excludes stage and disabled displays");
+    Check(config.GetEnabledStageOutputs().Single().StageSourceId == "mainA",
+        "Stage output references original source output ID");
+    Check(config.Find("stageA")!.Bounds.Width == 1280,
+        "Stage confidence monitor size and coordinates are retained");
+    Check(ShowDocument.Property(config.RawSettings, "unsupportedExistingSettings")
+        .ValueKind == JsonValueKind.Object,
+        "Original unknown SETTINGS keys remain available");
+}
+
+var router = new FreeShowShortcutRouter();
+var at = DateTimeOffset.UnixEpoch;
+string[] activeIds = ["out-a", "out-b"];
+var f1 = router.Route(new NativeShortcutInput("F1", at), activeIds);
+Check(f1.Count == 2 && f1.All(x => x.Command == NativeShortcutCommand.ClearBackground),
+    "Original F1 clears only background on active normal outputs");
+var f2 = router.Route(new NativeShortcutInput("F2", at.AddSeconds(1)), activeIds);
+Check(f2.Count == 2 && f2.All(x => x.Command == NativeShortcutCommand.ClearSlide
+    && !x.ClearCachedSlidePosition), "First F2 clears lyrics but retains cached slide position");
+var f2Again = router.Route(new NativeShortcutInput("F2", at.AddMilliseconds(1400)), activeIds);
+Check(f2Again.Count == 2 && f2Again.All(x => x.ClearCachedSlidePosition),
+    "Second F2 within 500 ms also clears saved slide position");
+Check(router.Route(new NativeShortcutInput("F2", at.AddMilliseconds(1410),
+    Repeat:true), activeIds).Count == 0, "Repeated F2 key events are ignored");
+var f3 = router.Route(new NativeShortcutInput("F3", at.AddSeconds(3)), activeIds);
+Check(f3.Count == 4 && f3.Count(x => x.Command == NativeShortcutCommand.ClearOverlays) == 2
+    && f3.Count(x => x.Command == NativeShortcutCommand.ClearEffects) == 2,
+    "Original F3 clears overlays and effects separately");
+var f4 = router.Route(new NativeShortcutInput("F4", at.AddSeconds(4)), activeIds);
+Check(f4.Count == 1 && f4[0].Command == NativeShortcutCommand.ClearAudioAndPlaylist
+    && f4[0].OutputId == "", "Original F4 is global audio clear, not output clear");
+Check(router.Route(new NativeShortcutInput("F4", at.AddSeconds(4), Alt:true),
+    activeIds).Count == 0, "Alt+F4 is never hijacked");
+var next = router.Route(new NativeShortcutInput(" ", at.AddSeconds(6)), activeIds);
+Check(next.Count == 2 && next.All(x => x.Command == NativeShortcutCommand.Next),
+    "Space advances all active normal outputs");
+var duplicate = router.Route(new NativeShortcutInput("ArrowRight", at.AddMilliseconds(6040),
+    Origin: NativeShortcutOrigin.OutputWindow), activeIds);
+Check(duplicate.Count == 0, "Cross-source advance duplicate within 80 ms is suppressed");
+var independent = router.Route(new NativeShortcutInput("ArrowRight", at.AddMilliseconds(6040)),
+    activeIds);
+Check(independent.Count == 2, "Same-origin rapid lyric advances are not artificially delayed");
+var first = router.Route(new NativeShortcutInput("Home", at.AddSeconds(7)), activeIds);
+var last = router.Route(new NativeShortcutInput("End", at.AddSeconds(8)), activeIds);
+var previous = router.Route(new NativeShortcutInput("PageUp", at.AddSeconds(9)), activeIds);
+Check(first.All(x => x.Command == NativeShortcutCommand.First)
+    && last.All(x => x.Command == NativeShortcutCommand.Last)
+    && previous.All(x => x.Command == NativeShortcutCommand.Previous),
+    "Home/End/PageUp preserve original direction semantics");
+Check(router.Route(new NativeShortcutInput("ArrowRight", at.AddSeconds(10),
+    TypingInEditableControl:true), activeIds).Count == 0,
+    "Typing a lyric does not accidentally advance live outputs");
+Check(router.Route(new NativeShortcutInput("F5", at.AddSeconds(11),
+    OutputLocked:true), activeIds).Count == 0,
+    "Locked outputs do not accept advancement in Native");
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
