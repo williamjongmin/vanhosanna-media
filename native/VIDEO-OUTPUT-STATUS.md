@@ -35,6 +35,8 @@ dotnet run --project native/FreeShow.Native.VisualProbe -- "C:\FreeShow\Shows\Ex
 dotnet run --project native/FreeShow.Native.VisualProbe -- "C:\FreeShow\Shows\Example.show" --data-root "C:\FreeShow" --style "my-style-id" --video "C:\FreeShow\Media\loop.mp4"
 ~~~
 
+For active FreeShow output backgrounds, `NativeFreeShowOutputSession` accepts the currently selected background ID and an optional external media resolver. The real FreeShow media cache can live outside an individual .show file; callers must provide the correct lookup rather than inventing a media path.
+
 ## Not equivalent yet
 - Two concurrent videos, scene media, camera, NDI/OMT, YouTube players, video transitions, output effects, crop/flip/filter/blend, media timing, output synchronization, stage/Online window composition
 - Full original FreeShow operator UI and all workflows
