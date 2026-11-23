@@ -209,6 +209,36 @@ finally
     Directory.Delete(visualRoot, recursive: true);
 }
 
+// Persistent video state: these pure checks require no LibVLC decoder.
+var videoState = new NativeVideoPlaybackState();
+Check(videoState.Plan("loop", @"C:\Media\loop.mp4") == VideoPlaybackDecision.Open,
+    "New local video requests decoder start");
+videoState.MarkStarted("loop", @"C:\Media\loop.mp4");
+Check(videoState.Plan("loop", @"C:\Media\loop.mp4") == VideoPlaybackDecision.Keep,
+    "Same background remains active across lyric cue changes");
+Check(videoState.Plan("loop", @"c:\media\LOOP.mp4") == VideoPlaybackDecision.Keep,
+    "Windows media file case does not trigger decoder restart");
+Check(videoState.Plan("different", @"C:\Media\other.mp4") == VideoPlaybackDecision.Open,
+    "Different media requires an explicit background change");
+Check(videoState.Plan("missing", null) == VideoPlaybackDecision.Unresolved,
+    "Unresolved media does not falsely start decoder");
+Check(videoState.Plan("", null) == VideoPlaybackDecision.Stop,
+    "Explicitly clearing background stops persistent decoder");
+videoState.MarkStopped();
+Check(videoState.Plan("", null) == VideoPlaybackDecision.NoChange,
+    "No video and no request requires no decoder operation");
+
+using (var videoDoc = JsonDocument.Parse("""
+{"style":"#111111","media":[{"path":"background.mp4","type":"video","loop":true}]}
+"""))
+{
+    var media = FreeShowMediaLookup.Resolve(show, "background.mp4");
+    Check(media.Kind == NativeMediaKind.Video, "Local video file classified as video");
+    Check(FreeShowMediaLookup.ExistingLocalVideoPath(media,
+        Path.Combine(Path.GetTempPath(), "nonexistent-video-root")) == null,
+        "Nonexistent video is not assumed to be playable");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
