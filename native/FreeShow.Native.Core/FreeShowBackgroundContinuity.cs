@@ -40,7 +40,13 @@ public static class FreeShowBackgroundContinuity
         if (activeId.Length == 0)
         {
             // Clearing an already empty output background must not stop the
-            // independent style background currently playing.
+            // independent style background currently playing. However an
+            // unrecognized decoder or unported style image must not be
+            // silently accepted as a valid media state.
+            if (style != null && style.Media.Kind != NativeMediaKind.Video)
+                return Block("An independent nonvideo style layer needs its native compositor.");
+            if (playingId.Length > 0 && style?.Media.Id != playingId)
+                return Block("A decoder is playing video not owned by the style background.");
             return new(NativeBackgroundClearDecision.NoChange, "", null, null);
         }
 
