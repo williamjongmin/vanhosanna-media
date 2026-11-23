@@ -12,8 +12,9 @@ namespace FreeShow.Native.Core;
 /// </summary>
 public sealed class FreeShowOutputState
 {
-    private readonly JsonObject data;
+    private JsonObject data;
     public string OutputId { get; }
+    public long Revision { get; private set; }
 
     public FreeShowOutputState(FreeShowConfiguredOutput configured)
     {
@@ -44,11 +45,13 @@ public sealed class FreeShowOutputState
         {
             case NativeShortcutCommand.ClearSlide:
                 data["slide"] = null;
+                Revision++;
                 return true;
             case NativeShortcutCommand.ClearBackground:
                 // Only active output background clears. Original style background,
                 // scene media and underlying output template are independent.
                 data["background"] = null;
+                Revision++;
                 return true;
             case NativeShortcutCommand.ClearOverlays:
                 // Preview.svelte clearOverlays preserves locked IDs and
@@ -58,9 +61,11 @@ public sealed class FreeShowOutputState
                 // shortcuts.ts F3 clears every overlay (including locked
                 // overlays), unlike the Preview clear button.
                 data["overlays"] = new JsonArray();
+                Revision++;
                 return true;
             case NativeShortcutCommand.ClearEffects:
                 data["effects"] = new JsonArray();
+                Revision++;
                 return true;
             default:
                 return false; // Navigation/audio require the real controller.
@@ -79,18 +84,27 @@ public sealed class FreeShowOutputState
         var kept = Overlays.Where(lockedOverlayIds.Contains).ToArray();
         data["overlays"] = new JsonArray(kept.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
         data["effects"] = new JsonArray();
+        Revision++;
     }
 
     /// <summary>
     /// Original clearScene() affects scene only, not the background or slide.
     /// </summary>
-    public void ClearScene() => data["scene"] = null;
+    public void ClearScene()
+    {
+        data["scene"] = null;
+        Revision++;
+    }
 
     /// <summary>
     /// Source clearTimers() clears the output transition state separately
     /// from the actual runtime timers. Those runtime timers are not ported.
     /// </summary>
-    public void ClearTransition() => data["transition"] = null;
+    public void ClearTransition()
+    {
+        data["transition"] = null;
+        Revision++;
+    }
 
     public void SetSlide(JsonElement originalFreeShowOutSlide)
     {
@@ -98,6 +112,7 @@ public sealed class FreeShowOutputState
             throw new ArgumentException("Original OutSlide must be an object.",
                 nameof(originalFreeShowOutSlide));
         data["slide"] = JsonNode.Parse(originalFreeShowOutSlide.GetRawText());
+        Revision++;
     }
 
     public void SetBackground(JsonElement originalFreeShowBackground)
@@ -108,6 +123,24 @@ public sealed class FreeShowOutputState
                 nameof(originalFreeShowBackground));
         data["background"] = originalFreeShowBackground.ValueKind == JsonValueKind.Null
             ? null : JsonNode.Parse(originalFreeShowBackground.GetRawText());
+        Revision++;
+    }
+
+    /// <summary>
+    /// Only invoke after an authoritative external state sync or the full
+    /// output-restore runtime reports success. The entire original OutData
+    /// object is replaced without narrowing fields or rewriting .show files.
+    /// An invalid snapshot is refused before the prior state is touched.
+    /// </summary>
+    internal void ReplaceAfterAcknowledgement(JsonElement originalOutData)
+    {
+        if (originalOutData.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("FreeShow OutData must be an object.",
+                nameof(originalOutData));
+        var next = JsonNode.Parse(originalOutData.GetRawText()) as JsonObject
+            ?? throw new InvalidDataException("Original FreeShow OutData could not be parsed.");
+        data = next;
+        Revision++;
     }
 
     private IReadOnlyList<string> ReadArray(string name)
