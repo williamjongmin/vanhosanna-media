@@ -1427,6 +1427,33 @@ using (var navShowJson = JsonDocument.Parse("""
               secondVisible.Visible.TextItems[0].Source.Lines.Count == 1,
             "Increasing original revealCount advances the one-line window without duplicating text");
 
+        using (var sourceAtEnd = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":2,"revealCount":3,"itemClickReveal":true}
+"""))
+        {
+            var fullItem = sourceFrame.TextItems[0];
+            var shortItem = fullItem with
+            {
+                Source = fullItem.Source with
+                {
+                    Lines = fullItem.Source.Lines.Take(1).ToArray()
+                }
+            };
+            var mixedLengths = sourceFrame with
+            {
+                TextItems = new[] { fullItem, shortItem }
+            };
+            var finalWindow = FreeShowRevealRenderProjection.Prepare(
+                mixedLengths, sourceAtEnd.RootElement,
+                style with { HighestActiveLinePosition = 2 });
+            Check(finalWindow.IsSupported &&
+                  finalWindow.Visible.TextItems.Count == 2 &&
+                  finalWindow.Visible.TextItems[0].Source.Lines[0].Text == "C" &&
+                  finalWindow.Visible.TextItems[1].Source.Lines[0].Text == "A",
+                "Original TextboxLines falls back to last possible window for shorter text items");
+        }
+
         var unsupportedFaded = FreeShowRevealRenderProjection.Prepare(
             sourceFrame, firstRevealed.RootElement,
             style with { ShowAsFaded = true });
