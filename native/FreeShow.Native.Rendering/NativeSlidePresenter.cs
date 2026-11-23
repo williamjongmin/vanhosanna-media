@@ -144,6 +144,24 @@ public sealed class NativeSlidePresenter : ContentControl
         return true;
     }
 
+    /// <summary>
+    /// Pure cache lookup for the exact original slide and reveal style.
+    /// It never makes controls, moves the visual, or invokes video media.
+    /// </summary>
+    public bool HasPrewarmedReveal(
+        int nativeCueOrdinal, JsonElement outSlide,
+        FreeShowRevealStyleContext outputStyle)
+    {
+        if (nativeCueOrdinal < 0 || nativeCueOrdinal >= prepared.Count)
+            return false;
+        var key = NativeRevealCacheKey.From(
+            nativeCueOrdinal, outSlide, outputStyle);
+        return key.HasValue &&
+            prepared[nativeCueOrdinal].Frame.Source.LayoutIndex ==
+                key.Value.LayoutIndex &&
+            revealVariants.ContainsKey(key.Value);
+    }
+
     public int PreparedRevealVariantCount => revealVariants.Count;
 
     private Viewbox Build(NativeFramePlan frame, FreeShowOutputLayerPlan? output,
