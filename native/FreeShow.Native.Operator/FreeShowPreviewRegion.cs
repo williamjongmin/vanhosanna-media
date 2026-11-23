@@ -72,6 +72,9 @@ public sealed class FreeShowPreviewRegion : UserControl
         };
     }
 
+    public void SetLanguage(string originalLocale) =>
+        clears.SetLanguage(originalLocale);
+
     public void UpdateClearState(JsonElement originalOverlayDefinitions = default,
         FreeShowAuxiliaryPreviewState? runtime = null)
     {
