@@ -1568,6 +1568,30 @@ using (var navShowJson = JsonDocument.Parse("""
               batch.OutputPlans["screen2"].Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
               !batch.CanDispatchLive,
             "One active output at final slide cannot force another output to leave its current reveal");
+        var keyboardNavigation = new FreeShowKeyboardAdvanceInspector();
+        var eventAt = DateTimeOffset.UnixEpoch.AddSeconds(30);
+        var routed = keyboardNavigation.Inspect(
+            new NativeShortcutInput("ArrowRight", eventAt,
+                NativeShortcutOrigin.Keyboard),
+            config, state, context, id => id == source.ShowId ? source : null,
+            projectContent, projectContent.ItemAtOriginalIndex(0));
+        Check(routed?.Status ==
+              FreeShowMultiOutputAdvanceStatus.SlideOrRevealTargets &&
+              routed.OutputPlans.Count == 2,
+            "Existing FreeShow keyboard router feeds the native output navigation inspector");
+        var duplicate = keyboardNavigation.Inspect(
+            new NativeShortcutInput("ArrowRight", eventAt.AddMilliseconds(50),
+                NativeShortcutOrigin.ExternalController),
+            config, state, context, id => id == source.ShowId ? source : null);
+        Check(duplicate == null,
+            "Source 80ms different-input duplicate suppression applies before navigation");
+        var ctrlKey = keyboardNavigation.Inspect(
+            new NativeShortcutInput("ArrowRight", eventAt.AddMilliseconds(150),
+                NativeShortcutOrigin.Keyboard, Ctrl:true),
+            config, state, context, id => id == source.ShowId ? source : null);
+        Check(ctrlKey == null,
+            "Original Ctrl+ArrowRight remains reserved for editor/navigation context");
+
 
         using var bothAtEnd = JsonDocument.Parse("""
 {"outputs":{
