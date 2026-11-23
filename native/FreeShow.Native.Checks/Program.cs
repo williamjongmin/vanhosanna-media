@@ -1034,6 +1034,189 @@ using (var originalAudio = JsonDocument.Parse("""
         "Failed physical timer cancellation stays registered for explicit retry");
 }
 
+// 0.0.17 — FreeShow original clearAll(button): source-ordered execution
+// with all-capability gate, full cache, locked overlays, focus-mode slide
+// positions and partial failure reporting. These are synthetic fixtures.
+using (var originalDisplays = JsonDocument.Parse("""
+{
+ "outLocked":false,
+ "outputs":{
+   "main-id":{"name":"Main","enabled":true,"active":true,
+     "bounds":{"width":1920,"height":1080},
+     "out":{"slide":{"id":"original-show-id","layout":"main","index":1,"line":0},
+       "background":{"path":"loop.mp4"},"overlays":["pinned","temporary"],
+       "effects":["glow"],"transition":{"next":500},
+       "scene":{"id":"stage-scene"},"refresh":2}},
+   "online-id":{"name":"Online","enabled":true,"active":true,
+     "bounds":{"width":1920,"height":1080},
+     "out":{"slide":{"id":"original-show-id","layout":"main","index":0},
+       "background":{"path":"secondary.png"},"overlays":[],
+       "effects":[],"transition":{"next":250}}}
+ }
+}
+"""))
+using (var overlayDefinitions = JsonDocument.Parse("""
+{"pinned":{"locked":true},"temporary":{"locked":false}}
+"""))
+using (var liveAudio = JsonDocument.Parse("""
+[{"path":"music.mp3","metadata":{"name":"Original"},"options":{"startAt":15.25}}]
+"""))
+{
+    var sourceConfig = FreeShowOutputConfiguration.Parse(originalDisplays.RootElement);
+    var sourceClear = new FreeShowOutputCommandCoordinator(
+        sourceConfig, overlayDefinitions.RootElement);
+    var context = new FreeShowClearAllContext(
+        FromButton:true, FocusMode:false, liveAudio.RootElement, true);
+    var restoreCache = new FreeShowOutputRestoreCache();
+    var slideCache = new FreeShowOutputSlidePositionCache();
+    var sourcePlan = sourceClear.PlanClearAll(context);
+
+    Check(sourcePlan.IsReady && !sourcePlan.AlreadyCleared &&
+          sourcePlan.ActiveOutputIds.SequenceEqual(["main-id","online-id"]) &&
+          sourcePlan.LockedOverlayIds["main-id"].SetEquals(["pinned"]),
+        "Source Clear All plans original output IDs and locked overlay metadata");
+    Check(FreeShowClearAllSteps.ExecuteInOriginalOrder.SequenceEqual([
+          FreeShowClearAllStep.StopTimelinePlayback,
+          FreeShowClearAllStep.ClearBackgrounds,
+          FreeShowClearAllStep.ClearNextSlideTimers,
+          FreeShowClearAllStep.ClearSlides,
+          FreeShowClearAllStep.ClearOverlaysAndEffects,
+          FreeShowClearAllStep.ClearGlobalAudio,
+          FreeShowClearAllStep.ClearAllRemainingTimers]),
+        "Source timeline/background/F2/overlays/audio/final-timers order preserved");
+
+    var blocked = await sourceClear.ClearAllAsync(
+        context, restoreCache, slideCache, runtime:null);
+    Check(blocked.Status == FreeShowClearAllStatus.Refused &&
+          !restoreCache.HasSnapshot &&
+          sourceClear.States["main-id"].HasSlide &&
+          sourceClear.States["main-id"].HasActiveBackground,
+        "Without full physical/audio backend Clear All refuses before changing output");
+
+    var limited = new RecordingSourceClearAllRuntime(
+        Enum.GetValues<FreeShowClearAllStep>().Where(
+            x => x != FreeShowClearAllStep.ClearGlobalAudio));
+    Check(sourceClear.CheckClearAllReadiness(sourcePlan, limited).Any(
+            x => x.Contains("ClearGlobalAudio")) &&
+          (await sourceClear.ClearAllAsync(
+            context, restoreCache, slideCache, limited)).Status ==
+                FreeShowClearAllStatus.Refused,
+        "Missing just global audio backend rejects entire multi-output clear");
+
+    var unsafeContext = context with {
+        FromButton = false, PopupActive = true
+    };
+    Check(!sourceClear.PlanClearAll(unsafeContext).IsReady &&
+          (await sourceClear.ClearAllAsync(
+            unsafeContext, restoreCache, slideCache,
+            new RecordingSourceClearAllRuntime(
+                Enum.GetValues<FreeShowClearAllStep>()))).Status ==
+                FreeShowClearAllStatus.Refused,
+        "Escape-origin Clear All obeys original active popup/selection guard");
+    Check(sourceClear.PlanClearAll(
+        unsafeContext with { FromButton = true }).IsReady,
+        "Source explicit Clear All button may bypass Escape UI selection guard");
+
+    var noOverlayInfo = new FreeShowOutputCommandCoordinator(sourceConfig);
+    Check(!noOverlayInfo.PlanClearAll(context).IsReady,
+        "Unknown locked-overlay definitions cannot trigger destructive Clear All");
+
+    var partial = new RecordingSourceClearAllRuntime(
+        Enum.GetValues<FreeShowClearAllStep>())
+    {
+        FailAtStep = FreeShowClearAllStep.ClearBackgrounds
+    };
+    var partialResult = await sourceClear.ClearAllAsync(
+        context, restoreCache, slideCache, partial);
+    Check(partialResult.Status == FreeShowClearAllStatus.PartialExecution &&
+          partialResult.CompletedSteps == 1 &&
+          restoreCache.HasSnapshot &&
+          sourceClear.States["main-id"].HasActiveBackground,
+        "Partial runtime Clear All preserves full output/audio recovery snapshot");
+    Check((await sourceClear.ClearAllAsync(context, restoreCache, slideCache,
+          new RecordingSourceClearAllRuntime(
+              Enum.GetValues<FreeShowClearAllStep>()))).Status ==
+              FreeShowClearAllStatus.Refused,
+        "Unreconciled Clear All cache cannot be overwritten by half-cleared state");
+
+    var sourceClearSuccess = new FreeShowOutputCommandCoordinator(
+        sourceConfig, overlayDefinitions.RootElement);
+    var successCache = new FreeShowOutputRestoreCache();
+    var successSlideCache = new FreeShowOutputSlidePositionCache();
+    var runtime = new RecordingSourceClearAllRuntime(
+        Enum.GetValues<FreeShowClearAllStep>());
+    var result = await sourceClearSuccess.ClearAllAsync(
+        context, successCache, successSlideCache, runtime);
+    Check(result.Succeeded && result.CompletedSteps == 7 &&
+          runtime.Executed.SequenceEqual(FreeShowClearAllSteps.ExecuteInOriginalOrder),
+        "Original complete Clear All effects execute once and in order");
+    Check(successCache.HasSnapshot &&
+          successCache.PlanRestore(
+            sourcePlan.ActiveOutputIds, sourceClearSuccess.States).IsSourceComplete &&
+          ShowDocument.Property(
+            successCache.PlanRestore(
+              sourcePlan.ActiveOutputIds,
+              sourceClearSuccess.States).OutputSnapshots["main-id"], "scene")
+            .ValueKind == JsonValueKind.Object,
+        "Entire original OutData and playback metadata saved before source clear");
+    Check(!sourceClearSuccess.States["main-id"].HasSlide &&
+          !sourceClearSuccess.States["main-id"].HasActiveBackground &&
+          sourceClearSuccess.States["main-id"].Overlays.SequenceEqual(["pinned"]) &&
+          sourceClearSuccess.States["main-id"].Effects.Count == 0 &&
+          ShowDocument.Property(
+            sourceClearSuccess.States["main-id"].Snapshot(), "transition")
+            .ValueKind == JsonValueKind.Null &&
+          ShowDocument.Property(
+            sourceClearSuccess.States["main-id"].Snapshot(), "scene")
+            .ValueKind == JsonValueKind.Object,
+        "Clear All changes lyrics/background/transition/unlocked overlays but retains scene and pinned overlays");
+
+    var freshPlan = sourceClearSuccess.PlanClearAll(context);
+    Check(sourceClearSuccess.CheckClearAllReadiness(
+          sourcePlan, runtime).Any(x => x.Contains("changed since")) &&
+          freshPlan.AlreadyCleared == false,
+        "Prior source Clear All plan becomes stale after acknowledged output changes");
+
+    var focusController = new FreeShowOutputCommandCoordinator(
+        sourceConfig, overlayDefinitions.RootElement);
+    var focusCtx = context with { FocusMode = true };
+    var focusCache = new FreeShowOutputRestoreCache();
+    var focusSlides = new FreeShowOutputSlidePositionCache();
+    var focusRuntime = new RecordingSourceClearAllRuntime(
+        Enum.GetValues<FreeShowClearAllStep>());
+    Check((await focusController.ClearAllAsync(
+        focusCtx, focusCache, focusSlides, focusRuntime)).Status ==
+            FreeShowClearAllStatus.Refused &&
+          !focusCache.HasSnapshot && focusRuntime.Executed.Count == 0,
+        "Focus mode refuses missing source Show lookup before touching live output");
+    Check((await focusController.ClearAllAsync(
+        focusCtx, focusCache, focusSlides, focusRuntime,
+        id => id == show.ShowId ? show : null)).Succeeded &&
+          focusSlides.Get("main-id").HasValue,
+        "Focus mode retains eligible source slide cache after Clear All");
+
+    using var alreadyEmpty = JsonDocument.Parse("""
+{"outLocked":false,"outputs":{
+  "main-id":{"name":"Main","enabled":true,"active":true,
+    "bounds":{"width":1920,"height":1080},
+    "out":{"slide":null,"background":null,"transition":null,
+           "effects":[],"overlays":[],"scene":{"id":"leave-scene"}}}}}
+""");
+    using var audioEmpty = JsonDocument.Parse("[]");
+    var alreadyConfig = FreeShowOutputConfiguration.Parse(alreadyEmpty.RootElement);
+    var emptyCoordinator = new FreeShowOutputCommandCoordinator(alreadyConfig);
+    var emptyCtx = context with {
+        PlayingAudioData = audioEmpty.RootElement, PlayingMetronome = false
+    };
+    var emptyState = new FreeShowOutputSlidePositionCache();
+    var emptyResult = await emptyCoordinator.ClearAllAsync(
+        emptyCtx, new FreeShowOutputRestoreCache(), emptyState, runtime:null);
+    Check(emptyResult.Status == FreeShowClearAllStatus.AlreadyCleared &&
+          emptyResult.CompletedSteps == 0 &&
+          emptyCoordinator.States["main-id"].Revision == 0,
+        "FreeShow already-cleared output is a no-op except reset of slide cache");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
@@ -1132,6 +1315,37 @@ internal sealed class RecordingSourceTimer : IFreeShowTimerCancellation
         cancellationToken.ThrowIfCancellationRequested();
         if (FailToCancel) throw new IOException("Synthetic timer failure.");
         Cancelled = true;
+        return Task.CompletedTask;
+    }
+}
+
+
+internal sealed class RecordingSourceClearAllRuntime : IFreeShowClearAllRuntime
+{
+    private readonly HashSet<FreeShowClearAllStep> supported;
+    public FreeShowClearAllStep? FailAtStep { get; set; }
+    public List<FreeShowClearAllStep> Executed { get; } = new();
+
+    public RecordingSourceClearAllRuntime(IEnumerable<FreeShowClearAllStep> supported)
+    {
+        this.supported = new HashSet<FreeShowClearAllStep>(supported);
+    }
+
+    public bool SupportsCompleteSourceStep(FreeShowClearAllStep step) =>
+        supported.Contains(step);
+
+    public Task ExecuteCompleteSourceStepAsync(
+        FreeShowClearAllStep step, FreeShowClearAllPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!SupportsCompleteSourceStep(step))
+            throw new NotSupportedException("Missing source Clear All backend step");
+        if (FailAtStep == step)
+            throw new IOException("Synthetic source Clear All step failure");
+        if (!plan.IsReady)
+            throw new InvalidOperationException("Invalid original Clear All plan");
+        Executed.Add(step);
         return Task.CompletedTask;
     }
 }
