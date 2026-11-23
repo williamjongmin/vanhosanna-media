@@ -7,5 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../FreeShow.Native.Core/FreeShow.Native.Core.csproj" />
     <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="LibVLCSharp.Avalonia" Version="3.10.1" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
   </ItemGroup>
 </Project>
