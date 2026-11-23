@@ -197,19 +197,19 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 }
             }
 
-            // Source clearAll first clears the slide-position cache, even
-            // if everything is already cleared and the operation returns.
+            // Once a previous Clear All partially failed, keep the original
+            // recovery snapshot AND existing F2 navigation cache intact.
+            // This conservative refusal is stricter than upstream JS.
+            if (!plan.AlreadyCleared && cache.HasSnapshot)
+                return new(FreeShowClearAllStatus.Refused, 0,
+                    ["An earlier Clear All restore cache still exists. Restore or reconcile it first."]);
+
+            // Source clearAll resets the slide-position cache even when all
+            // active outputs were already cleared and no external work runs.
             slidePositionCache.Clear();
             if (plan.AlreadyCleared)
                 return new(FreeShowClearAllStatus.AlreadyCleared, 0,
                     Array.Empty<string>());
-
-            // Once a previous Clear All partially failed, keep the original
-            // recovery snapshot rather than overwriting it with a half-cleared
-            // state. This conservative policy is stricter than source JS.
-            if (cache.HasSnapshot)
-                return new(FreeShowClearAllStatus.Refused, 0,
-                    ["An earlier Clear All restore cache still exists. Restore or reconcile it first."]);
 
             // This preflight requires authoritative audio state. Audio metadata
             // is not inferred from a playback button or empty native registry.
