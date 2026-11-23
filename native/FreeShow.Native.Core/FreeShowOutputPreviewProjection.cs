@@ -7,7 +7,8 @@ namespace FreeShow.Native.Core;
 public static class FreeShowOutputPreviewProjection
 {
     public static IReadOnlyList<FreeShowOutputPreviewEntry> Prepare(
-        FreeShowOutputConfiguration configuration, ShowDocument? loadedShow)
+        FreeShowOutputConfiguration configuration, ShowDocument? loadedShow,
+        FreeShowCapturedOutputBatch? sourceSnapshot = null)
     {
         var enabled = configuration.All.Where(o => o.Enabled)
             .OrderBy(o => o.StageSourceId != null)
@@ -18,8 +19,24 @@ public static class FreeShowOutputPreviewProjection
         var result = new List<FreeShowOutputPreviewEntry>();
         foreach (var output in visible)
         {
-            var active = ShowDocument.Property(
-                ShowDocument.Property(output.Raw, "out"), "slide");
+            string? snapshotProblem = null;
+            JsonElement outData;
+            if (sourceSnapshot == null)
+                outData = ShowDocument.Property(output.Raw, "out");
+            else if (!sourceSnapshot.IsCoherent)
+            {
+                snapshotProblem = "Original multi-output snapshot changed during capture";
+                outData = default;
+            }
+            else if (!sourceSnapshot.Outputs.TryGetValue(output.Id, out var frozen))
+            {
+                snapshotProblem = "Current original output is missing from snapshot";
+                outData = default;
+            }
+            else
+                outData = frozen.OutData;
+
+            var active = ShowDocument.Property(outData, "slide");
             var id = ShowDocument.String(active, "id");
             var layout = ShowDocument.String(active, "layout");
             var element = ShowDocument.Property(active, "index");
@@ -27,7 +44,9 @@ public static class FreeShowOutputPreviewProjection
                          element.TryGetInt32(out var value) && value >= 0 ? value : null;
             SlideFrame? frame = null;
             string? warning = null;
-            if (output.StageSourceId != null)
+            if (snapshotProblem != null)
+                warning = snapshotProblem;
+            else if (output.StageSourceId != null)
                 warning = "Stage output renderer not yet ported";
             else if (output.NeedsUnportedStreamingBackend)
                 warning = "Streaming output renderer not yet ported";
