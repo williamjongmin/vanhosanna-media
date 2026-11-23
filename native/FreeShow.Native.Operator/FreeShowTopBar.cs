@@ -208,4 +208,8 @@ public sealed class FreeShowTopBar : UserControl
     }
 }
 
-public sealed record FreeShowPageRequestedEventArgs(string PageId) : EventArgs;
+public sealed class FreeShowPageRequestedEventArgs : EventArgs
+{
+    public FreeShowPageRequestedEventArgs(string pageId) => PageId = pageId;
+    public string PageId { get; }
+}
