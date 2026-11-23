@@ -31,16 +31,44 @@ public static class FreeShowRevealRenderProjection
         if (style.RequiresVirtualBreaks)
             return Unsupported(source, "FreeShow virtual-break layout is not ported.");
 
+        // Upstream getOutputLines() derives max lines and reveal flags from
+        // the original _show(...).slides()[0].items, BEFORE visual-template
+        // merging. NativeStyledRenderPlanner may change output-only item
+        // style and flags. Never infer the original reveal contract from
+        // post-template items alone.
+        var rawItems = ShowDocument.Property(source.Source.RawSlide, "items");
+        if (rawItems.ValueKind != JsonValueKind.Array)
+            return Unsupported(source,
+                "Original Show slide items are unavailable for reveal comparison.");
+
+        var originals = rawItems.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.Object).ToArray();
+        var styledItems = source.Source.Items;
+        if (originals.Length != styledItems.Count)
+            return Unsupported(source,
+                "Native visual template changed original slide item count.");
+
+        for (int itemIndex = 0; itemIndex < originals.Length; itemIndex++)
+        {
+            var merged = styledItems[itemIndex].Raw;
+            if (ShowDocument.IsTrue(originals[itemIndex], "clickReveal") !=
+                    ShowDocument.IsTrue(merged, "clickReveal") ||
+                ShowDocument.IsTrue(originals[itemIndex], "lineReveal") !=
+                    ShowDocument.IsTrue(merged, "lineReveal"))
+                return Unsupported(source,
+                    "Visual template changed original click/line reveal semantics.");
+        }
+
         var sourceItems = source.TextItems;
-        int maxLines = sourceItems.Count == 0 ? 0 :
-            sourceItems.Max(x => x.Source.Lines.Count(l => HasSourceText(l)));
+        int maxLines = originals.Length == 0 ? 0 :
+            originals.Max(CountOriginalSourceLines);
         int? line = ReadNonNegativeInt(outSlide, "line");
         int? reveal = ReadNonNegativeInt(outSlide, "revealCount");
         if (line is null || reveal is null)
             return Unsupported(source, "Original line/revealCount must be known nonnegative integers.");
 
-        bool hasClick = sourceItems.Any(x => ShowDocument.IsTrue(x.Source.Raw, "clickReveal"));
-        bool hasLineReveal = sourceItems.Any(x => ShowDocument.IsTrue(x.Source.Raw, "lineReveal"));
+        bool hasClick = originals.Any(x => ShowDocument.IsTrue(x, "clickReveal"));
+        bool hasLineReveal = originals.Any(x => ShowDocument.IsTrue(x, "lineReveal"));
         bool clickRevealed = !hasClick || ShowDocument.IsTrue(outSlide, "itemClickReveal");
 
         // Match getOutputLines(): the original output uses the current active
@@ -131,6 +159,23 @@ public static class FreeShowRevealRenderProjection
                           Unsupported = omissions.Distinct().ToArray() },
             new(start, end, revealStart, revealEnd, clickRevealed),
             omissions.Distinct().ToArray());
+    }
+
+    private static int CountOriginalSourceLines(JsonElement item)
+    {
+        var rawLines = ShowDocument.Property(item, "lines");
+        if (rawLines.ValueKind != JsonValueKind.Array) return 0;
+        int count = 0;
+        foreach (var line in rawLines.EnumerateArray())
+        {
+            var runs = ShowDocument.Property(line, "text");
+            if (runs.ValueKind != JsonValueKind.Array) continue;
+            if (runs.EnumerateArray().Any(run =>
+                ShowDocument.Property(run, "value").ValueKind !=
+                    JsonValueKind.Undefined))
+                count++;
+        }
+        return count;
     }
 
     private static bool HasSourceText(SlideLine line) =>
