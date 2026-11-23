@@ -49,6 +49,12 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 **Status:** Code committed; compilation, fixture execution, church-data compatibility, GUI, physical latency and hardware decoding have not been verified. This code cannot yet replace the FreeShow application.
 
+## Native milestones after 0.0.3
+
+- **0.0.4 Visual settings / background prototype:** read-only `FreeShowVisualSettings` loads original synced style and template JSON; `FreeShowOutputLayerPlanner` preserves output layer ordering, template selection, background references and transition metadata. `NativeStillImageCache` can prepare local still backgrounds for the developer preview. Video/media state, true template merge and output-layer parity are not implemented. The resulting output is not pixel-identical to FreeShow.
+- **0.0.5 Copy-only .show export foundation:** `FreeShowShowExport` edits title or a single rich-text run only in a private JSON tree, preserves the original show ID and other fields, updates the modified timestamp, validates the resulting tuple and exports only through exclusive new-file creation; never overwrites an original. See `DATA-COMPATIBILITY.md`. No integrated editor or autosave yet.
+- The companion synthetic checks exercise these paths but are **not executed**, following the user-requested Beta 2 testing policy.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
