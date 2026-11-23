@@ -141,6 +141,12 @@ public sealed class FreeShowMultiOutputPreview : UserControl
                 }
             }
 
+            // Preview must not pretend unsupported source text/CSS/media
+            // was faithfully rendered, regardless of whether this particular
+            // slide currently uses click/line reveal.
+            if (omission == null && !candidate.CanRenderWithoutKnownOmissions)
+                omission = string.Join("; ", candidate.Unsupported);
+
             // Rendering the full lyric while a click/line reveal is incomplete
             // leaks hidden words to operators. Show a blank unknown preview
             // instead of pretending that everything is already revealed.
