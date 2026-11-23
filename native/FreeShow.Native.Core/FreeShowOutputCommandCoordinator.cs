@@ -143,6 +143,7 @@ public sealed class FreeShowOutputCommandCoordinator
         {
             case NativeShortcutCommand.ClearBackground:
             case NativeShortcutCommand.ClearSlide:
+            case NativeShortcutCommand.ClearAllOverlaysForShortcut:
             case NativeShortcutCommand.ClearEffects:
                 state.TryApply(plan.SourceAction);
                 break;
