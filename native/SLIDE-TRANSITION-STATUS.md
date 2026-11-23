@@ -3,6 +3,8 @@
 Follow-up: [0.0.25 prepared lyric application](SLIDE-PRESENTATION-STATUS.md) implements the source/visual adapter, adds a selected-control receipt and strengthens acknowledgment of absent reveal fields. The complete production source action backend is still unimplemented.
 
 ## Goal
+0.0.27 follow-up: current-state planning now occurs inside the coordinator gate, with FIFO input/timer admission and a single-output timer cleanup/advance path. Complete source effects and live integration are still required. See `NAVIGATION-COMMAND-STATUS.md`.
+
 Connect the source-accurate navigation and prewarmed native lyric views to a fail-closed command coordinator **without treating a cached text-frame swap as a complete FreeShow slide action**. No physical output runtime is registered in the read-only OperatorProbe.
 
 ## Original source inspected

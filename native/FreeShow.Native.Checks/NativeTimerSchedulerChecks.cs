@@ -279,7 +279,7 @@ internal static class NativeTimerSchedulerChecks
         }
     }
 
-    private sealed class ManualClock : TimeProvider
+    internal sealed class ManualClock : TimeProvider
     {
         private readonly List<Alarm> alarms = new();
         private long timestamp;

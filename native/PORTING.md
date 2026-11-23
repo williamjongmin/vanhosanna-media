@@ -96,6 +96,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.26 Native timer scheduler:** implemented actual .NET slide/overlay/effect countdown handles, original startup/pause/resume/slider control behavior, owner-loop dispatch, stale-callback invalidation and exact registration cleanup. Existing F2 and Clear All timer hooks can now operate on this isolated scheduler's real inventory. Source elapsed actions and live operator integration remain uninstalled. Deterministic clock/event-loop fixtures are authored but not run. See `TIMER-SCHEDULER-STATUS.md`.
 
+- **0.0.27 Queued navigation and timer dispatch:** added FIFO asynchronous command admission, current-state advance planning inside the coordinator gate, explicit single-output timer targeting, and acknowledged transition cleanup followed by within-Show advance. Stale queued expiries refuse; cleanup, advancement and partial failures have separate results. Production source backends, project/folder/PDF/overlay expiry and live operator integration remain incomplete. Synthetic rapid-input/queue/scheduler integration fixtures are authored, not run. See `NAVIGATION-COMMAND-STATUS.md`.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.

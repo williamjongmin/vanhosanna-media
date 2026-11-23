@@ -9,6 +9,7 @@
 - native-port contains lossless .show parsing, project/source preview models, core OutData and clear/restore plans, a persistent single-video LibVLC output prototype, and read-only Avalonia operator panels and navigation/reveal preparation.
 - 0.0.25 adds the prepared-lyric application adapter and logical visual acknowledgment, plus source slide-assignment semantics. A complete native source action backend and live operator/output-window integration are still missing; the adapter does not enable production output by itself.
 - 0.0.26 adds real native timer scheduling and next-timer control logic, linked to the existing cancellation hooks. Elapsed source actions, the live timer UI and full source backend integration remain incomplete.
+- 0.0.27 adds FIFO command dispatch, planning from the latest acknowledged state and the ordinary slide-timer cleanup/advance bridge. Production source handlers and live integration are still missing; project/folder/PDF/overlay expiry and full pending-action ordering remain incomplete.
 - No Windows build or fixture suite has been executed under the user's explicit **defer all builds/tests until Beta 2** request.
 - No physical output has been measured; under-50ms is an objective, not an observed result.
 - Full FreeShow source parity is **not** achieved; native developer output is not approved for live worship.

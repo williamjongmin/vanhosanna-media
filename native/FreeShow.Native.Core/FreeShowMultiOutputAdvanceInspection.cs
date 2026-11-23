@@ -21,14 +21,19 @@ public static class FreeShowMultiOutputAdvanceInspection
         FreeShowProjectContent? activeProject = null,
         FreeShowProjectContentItem? activeProjectItem = null,
         bool focusMode = false,
-        bool nextItemOnLastSlide = true)
+        bool nextItemOnLastSlide = true,
+        IReadOnlyCollection<string>? outputIds = null)
     {
         ArgumentNullException.ThrowIfNull(configured);
         ArgumentNullException.ThrowIfNull(currentStates);
         ArgumentNullException.ThrowIfNull(sourceSettings);
         ArgumentNullException.ThrowIfNull(knownSourceShow);
 
-        var active = configured.GetActiveNormalOutputs();
+        var selectionProblems = new List<string>();
+        var active = FreeShowNavigationOutputSelection.Select(
+            configured, outputIds, selectionProblems);
+        if (selectionProblems.Count != 0)
+            return Block(string.Join(" ", selectionProblems));
         if (ShowDocument.IsTrue(configured.RawSettings, "outLocked"))
             return Block("Original FreeShow outputs are locked.");
         if (active.Count == 0)
@@ -93,7 +98,7 @@ public static class FreeShowMultiOutputAdvanceInspection
         if (atBoundary &&
             (direction is FreeShowSlideAdvanceDirection.Next or
                 FreeShowSlideAdvanceDirection.Previous) &&
-            activeProject != null)
+            activeProject != null && outputIds == null)
         {
             var projectResult = FreeShowProjectAdvancePlanner.Prepare(
                 activeProject, ShowDocument.Property(
@@ -111,6 +116,9 @@ public static class FreeShowMultiOutputAdvanceInspection
             return new(FreeShowMultiOutputAdvanceStatus.AtShowBoundary, plans,
                 null, ["Original project/active-item controller is needed for further navigation."]);
 
+        // Explicit per-output timer navigation needs playNext's source
+        // project controller at a boundary. Do not infer project selection
+        // from a subset, even when that subset has reached its last slide.
         // Original changeProjectItem must wait until ALL active outputs have
         // reached the end of the active Show; never jump a project merely
         // because one screen reached its final slide.

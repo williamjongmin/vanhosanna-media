@@ -108,84 +108,95 @@ public sealed partial class FreeShowOutputCommandCoordinator
         await executeGate.WaitAsync(cancellationToken);
         try
         {
-            var problems = CheckSlideTransitionReadiness(plan, completeRuntimes);
-            if (problems.Count != 0)
-                return new(FreeShowSlideTransitionStatus.Refused, 0, problems);
-
-            int acknowledged = 0;
-            bool physicalStepAttempted = false;
-
-            try
-            {
-                foreach (var target in plan.Targets)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var runtime = completeRuntimes[target.OutputId];
-
-                    foreach (var phase in FreeShowSlideTransitionOrder.Phases)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        // External operations may partially complete even if
-                        // the first awaited phase throws. Never report such a
-                        // failure as an atomic no-op.
-                        physicalStepAttempted = true;
-                        await runtime.ExecuteCompletePhaseAsync(
-                            phase, target, cancellationToken);
-                    }
-
-                    JsonElement acknowledgedState =
-                        (await runtime.CaptureAcknowledgedOutDataAsync(
-                            target, cancellationToken)).Clone();
-
-                    if (!FreeShowSlideAcknowledgement.Matches(
-                            target, acknowledgedState))
-                        throw new InvalidDataException(
-                            "Original setOutput/updateOut returned a different Show, " +
-                            "slide index or reveal state than the requested command.");
-
-                    if (states[target.OutputId].Revision != target.ExpectedRevision)
-                        throw new InvalidOperationException(
-                            "Original output changed before confirmed slide state commit.");
-
-                    // This updates an in-memory clone only. It preserves
-                    // other source fields (background/audio-overlay state)
-                    // instead of assuming updateOut changed just lyrics.
-                    states[target.OutputId].ReplaceAfterAcknowledgement(
-                        acknowledgedState);
-                    acknowledged++;
-                }
-
-                return new(FreeShowSlideTransitionStatus.Completed, acknowledged,
-                    Array.Empty<string>());
-            }
-            catch (OperationCanceledException) when (physicalStepAttempted)
-            {
-                foreach (var target in plan.Targets)
-                    slideTransitionNeedsReconciliation.Add(target.OutputId);
-                return new(FreeShowSlideTransitionStatus.PartialExecution,
-                    acknowledged,
-                    ["Slide transition was cancelled after physical work began; " +
-                     "full output reconciliation is required."]);
-            }
-            catch (Exception error) when (error is not OperationCanceledException)
-            {
-                if (physicalStepAttempted)
-                {
-                    // Conservative multi-output quarantine: a failed external
-                    // phase may already have changed one or more screens.
-                    // Never trust the stale plan for another physical action.
-                    foreach (var target in plan.Targets)
-                        slideTransitionNeedsReconciliation.Add(target.OutputId);
-                }
-                return new(physicalStepAttempted
-                        ? FreeShowSlideTransitionStatus.PartialExecution
-                        : FreeShowSlideTransitionStatus.Failed,
-                    acknowledged,
-                    ["Source slide runtime failure: " + error.GetType().Name +
-                     " — " + error.Message +
-                     ". External outputs require explicit reconciliation."]);
-            }
+            return await DispatchSlideTransitionCoreAsync(plan, completeRuntimes, cancellationToken);
         }
         finally { executeGate.Release(); }
     }
+
+    // Caller owns executeGate. Advance planning and timer cleanup can use
+    // this path without dropping the gate or acquiring it recursively.
+    private async Task<FreeShowSlideTransitionResult> DispatchSlideTransitionCoreAsync(
+        FreeShowSlideTransitionPlan plan,
+        IReadOnlyDictionary<string, IFreeShowSlideTransitionRuntime> completeRuntimes,
+        CancellationToken cancellationToken)
+    {
+        var problems = CheckSlideTransitionReadiness(plan, completeRuntimes);
+        if (problems.Count != 0)
+            return new(FreeShowSlideTransitionStatus.Refused, 0, problems);
+
+        int acknowledged = 0;
+        bool physicalStepAttempted = false;
+
+        try
+        {
+            foreach (var target in plan.Targets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var runtime = completeRuntimes[target.OutputId];
+
+                foreach (var phase in FreeShowSlideTransitionOrder.Phases)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // External operations may partially complete even if
+                    // the first awaited phase throws. Never report such a
+                    // failure as an atomic no-op.
+                    physicalStepAttempted = true;
+                    await runtime.ExecuteCompletePhaseAsync(
+                        phase, target, cancellationToken);
+                }
+
+                JsonElement acknowledgedState =
+                    (await runtime.CaptureAcknowledgedOutDataAsync(
+                        target, cancellationToken)).Clone();
+
+                if (!FreeShowSlideAcknowledgement.Matches(
+                        target, acknowledgedState))
+                    throw new InvalidDataException(
+                        "Original setOutput/updateOut returned a different Show, " +
+                        "slide index or reveal state than the requested command.");
+
+                if (states[target.OutputId].Revision != target.ExpectedRevision)
+                    throw new InvalidOperationException(
+                        "Original output changed before confirmed slide state commit.");
+
+                // This updates an in-memory clone only. It preserves
+                // other source fields (background/audio-overlay state)
+                // instead of assuming updateOut changed just lyrics.
+                states[target.OutputId].ReplaceAfterAcknowledgement(
+                    acknowledgedState);
+                acknowledged++;
+            }
+
+            return new(FreeShowSlideTransitionStatus.Completed, acknowledged,
+                Array.Empty<string>());
+        }
+        catch (OperationCanceledException) when (physicalStepAttempted)
+        {
+            foreach (var target in plan.Targets)
+                slideTransitionNeedsReconciliation.Add(target.OutputId);
+            return new(FreeShowSlideTransitionStatus.PartialExecution,
+                acknowledged,
+                ["Slide transition was cancelled after physical work began; " +
+                 "full output reconciliation is required."]);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            if (physicalStepAttempted)
+            {
+                // Conservative multi-output quarantine: a failed external
+                // phase may already have changed one or more screens.
+                // Never trust the stale plan for another physical action.
+                foreach (var target in plan.Targets)
+                    slideTransitionNeedsReconciliation.Add(target.OutputId);
+            }
+            return new(physicalStepAttempted
+                    ? FreeShowSlideTransitionStatus.PartialExecution
+                    : FreeShowSlideTransitionStatus.Failed,
+                acknowledged,
+                ["Source slide runtime failure: " + error.GetType().Name +
+                 " — " + error.Message +
+                 ". External outputs require explicit reconciliation."]);
+        }
+    }
+
 }

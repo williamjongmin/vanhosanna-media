@@ -14,7 +14,8 @@ public static class FreeShowSlideTransitionPlanner
         FreeShowOutputConfiguration configuration,
         FreeShowCapturedOutputBatch captured,
         FreeShowMultiOutputAdvanceResult inspected,
-        Func<string, ShowDocument?> sourceShows)
+        Func<string, ShowDocument?> sourceShows,
+        IReadOnlyCollection<string>? outputIds = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(captured);
@@ -23,7 +24,8 @@ public static class FreeShowSlideTransitionPlanner
 
         var problems = captured.Problems.ToList();
         var targets = new List<FreeShowSlideTransitionTarget>();
-        var active = configuration.GetActiveNormalOutputs();
+        var active = FreeShowNavigationOutputSelection.Select(
+            configuration, outputIds, problems);
         if (ShowDocument.IsTrue(configuration.RawSettings, "outLocked"))
             problems.Add("Original FreeShow output is locked.");
         if (!captured.IsCoherent)
@@ -122,7 +124,7 @@ public static class FreeShowSlideTransitionPlanner
             problems.Add("No active output has a supported slide/reveal transition.");
 
         if (inspected.OutputPlans.Count != active.Count)
-            problems.Add("Navigation did not inspect every active FreeShow normal output.");
+            problems.Add("Navigation did not inspect exactly the requested FreeShow outputs.");
 
         return new(captured, targets.AsReadOnly(), problems.AsReadOnly());
     }

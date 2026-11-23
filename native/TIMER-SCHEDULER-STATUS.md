@@ -1,5 +1,7 @@
 # Native Port 0.0.26 — native countdowns and source timer controls
 
+Follow-up: 0.0.27 adds the FIFO/current-state command adapter for ordinary slide expiry. See `NAVIGATION-COMMAND-STATUS.md` for the sequence and limits. Production source backends, folder/PDF/overlay expiry and live integration remain incomplete.
+
 ## Implemented
 
 `FreeShowNativeTimerScheduler` is the first concrete Native timer scheduler. It uses .NET `TimeProvider` one-shot alarms and posts notifications onto a single source event loop. `AvaloniaFreeShowTimerEventLoop` connects this to the actual Avalonia dispatcher. These components are not instantiated in OperatorProbe yet.
