@@ -149,7 +149,7 @@ public sealed class FreeShowOutputConfiguration
 /// natural numbers. Browser localeCompare() ordering can differ for unusual
 /// Unicode names; this ordering is not declared exact UI parity.
 /// </summary>
-internal sealed class FreeShowOutputNameComparer : IComparer<string>
+public sealed class FreeShowOutputNameComparer : IComparer<string>
 {
     public static readonly FreeShowOutputNameComparer Instance = new();
 
