@@ -1748,6 +1748,30 @@ using (var navShowJson = JsonDocument.Parse("""
               incompleteTransition.Executed.Count == 0,
             "Missing updateOut source phase blocks even a cached lyric-only transition");
 
+        var wrongAcknowledgementController = new FreeShowOutputCommandCoordinator(config);
+        var wrongAcknowledgement = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases)
+        { ReturnWrongSlide = true };
+        var wrongResult = await wrongAcknowledgementController.DispatchSlideTransitionAsync(
+            transitionPlan, new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = wrongAcknowledgement });
+        Check(wrongResult.Status == FreeShowSlideTransitionStatus.PartialExecution &&
+              wrongAcknowledgementController.States["screen2"].Revision == 0 &&
+              wrongAcknowledgementController.UnreconciledSlideOutputs.Contains("screen2"),
+            "Backend acknowledging the wrong original index must not commit OutData");
+
+        var cancelledTransitionController = new FreeShowOutputCommandCoordinator(config);
+        var cancelledTransition = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases)
+        { CancelAtPhase = FreeShowSlideTransitionPhase.SetOriginalSlideWithFullOutputLifecycle };
+        var cancelResult = await cancelledTransitionController.DispatchSlideTransitionAsync(
+            transitionPlan, new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = cancelledTransition });
+        Check(cancelResult.Status == FreeShowSlideTransitionStatus.PartialExecution &&
+              cancelledTransitionController.UnreconciledSlideOutputs.Contains("screen2") &&
+              cancelledTransitionController.States["screen2"].Revision == 0,
+            "Cancelled physical phase quarantines all affected source output IDs");
+
         var completeTransition = new RecordingCompleteSlideTransitionRuntime(
             "screen2", FreeShowSlideTransitionOrder.Phases);
         var completeTransitionAdapters =
@@ -2081,6 +2105,7 @@ internal sealed class RecordingCompleteSlideTransitionRuntime :
     private readonly HashSet<FreeShowSlideTransitionPhase> supported;
     public string OutputId { get; }
     public FreeShowSlideTransitionPhase? FailAtPhase { get; set; }
+    public FreeShowSlideTransitionPhase? CancelAtPhase { get; set; }
     public bool ReturnWrongSlide { get; set; }
     public List<FreeShowSlideTransitionPhase> Executed { get; } = new();
 
@@ -2104,6 +2129,8 @@ internal sealed class RecordingCompleteSlideTransitionRuntime :
         cancellationToken.ThrowIfCancellationRequested();
         if (!SupportsCompletePhase(phase, target))
             throw new NotSupportedException("Synthetic source phase missing.");
+        if (CancelAtPhase == phase)
+            throw new OperationCanceledException("Synthetic physical slide phase cancelled");
         if (FailAtPhase == phase)
             throw new IOException("Synthetic physical slide phase failure");
         Executed.Add(phase);
