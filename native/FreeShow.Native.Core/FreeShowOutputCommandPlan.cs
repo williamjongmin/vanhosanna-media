@@ -13,7 +13,8 @@ public static class FreeShowOutputCommandPlanner
     public static FreeShowOutputCommandPlan Prepare(
         FreeShowShortcutAction input,
         FreeShowOutputConfiguration configuration,
-        JsonElement overlayDefinitions = default)
+        JsonElement overlayDefinitions = default,
+        JsonElement currentNativeOutData = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(configuration);
@@ -71,7 +72,9 @@ public static class FreeShowOutputCommandPlanner
             case NativeShortcutCommand.ClearOverlays:
                 // clearOverlays() requires the original portable OVERLAYS
                 // store to preserve locked IDs. Never guess lock metadata.
-                var ids = OutputStrings(output.Raw, "overlays");
+                var knownOutData = currentNativeOutData.ValueKind == JsonValueKind.Object
+                    ? currentNativeOutData : ShowDocument.Property(output.Raw, "out");
+                var ids = OutputStrings(knownOutData, "overlays");
                 if (ids.Count > 0 && overlayDefinitions.ValueKind != JsonValueKind.Object)
                     return Unsupported(input, "Overlay definitions unavailable: cannot protect locked overlays.");
                 foreach (var id in ids)
@@ -120,9 +123,9 @@ public static class FreeShowOutputCommandPlanner
             lockedOverlayIds.AsReadOnly(), warnings.AsReadOnly());
     }
 
-    private static IReadOnlyList<string> OutputStrings(JsonElement profile, string name)
+    private static IReadOnlyList<string> OutputStrings(JsonElement outData, string name)
     {
-        var values = ShowDocument.Property(ShowDocument.Property(profile, "out"), name);
+        var values = ShowDocument.Property(outData, name);
         return values.ValueKind == JsonValueKind.Array
             ? values.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String)
                 .Select(v => v.GetString() ?? "").Where(v => v.Length != 0).ToArray()
@@ -172,4 +175,8 @@ public sealed record FreeShowOutputCommandPlan(
 {
     public string OutputId => SourceAction.OutputId;
     public bool CanPlan => Warnings.Count == 0 && RequiredEffects.Count > 0;
+
+    /// <summary>Optimistic concurrency guard for source output changes. Direct
+    /// source fixture plans can omit it; native UI plans always set it.</summary>
+    public long? ExpectedNativeRevision { get; init; }
 }
