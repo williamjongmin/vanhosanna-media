@@ -29,7 +29,8 @@ public static class FreeShowTemplateMerger
         string mode = ShowDocument.String(templateSettings, "mode");
         if (mode is "scripture" or "text")
             warnings.Add("Full original template mode not yet ported: " + mode);
-        if (ShowDocument.Property(templateSettings, "styleOverrides").ValueKind == JsonValueKind.Array)
+        var wordOverrides = ShowDocument.Property(templateSettings, "styleOverrides");
+        if (wordOverrides.ValueKind == JsonValueKind.Array && wordOverrides.GetArrayLength() > 0)
             warnings.Add("Template word-style overrides are not yet ported.");
 
         var rawSlideItems = ShowDocument.Property(frame.RawSlide, "items");
@@ -52,6 +53,15 @@ public static class FreeShowTemplateMerger
             warnings.Add("Non-text template/source items require full original merge logic.");
         if (source.Concat(templates).Any(HasDynamicValue))
             warnings.Add("Dynamic template tokens require FreeShow variable/scripture resolution.");
+        if (source.Concat(templates).Any(x =>
+            x["bindings"] is JsonArray bindings && bindings.Count > 0))
+            warnings.Add("Output-specific item bindings need a real output ID and runtime binding resolver.");
+        if (source.Concat(templates).Any(x =>
+            x["scrolling"] != null || x["conditions"] != null))
+            warnings.Add("Scrolling and conditional item rendering are not yet implemented.");
+        if (templateSettings.ValueKind == JsonValueKind.Object
+            && ShowDocument.String(templateSettings, "overlayId").Length > 0)
+            warnings.Add("Template overlayId requires full output overlay composition.");
         if (templates.Any(x => GetString(x, "textFit") is not ("" or "none")))
             warnings.Add("Template text auto-sizing requires native text measurement.");
         if (templates.Any(x => GetBool(x, "lineReveal") || GetBool(x, "clickReveal")))
