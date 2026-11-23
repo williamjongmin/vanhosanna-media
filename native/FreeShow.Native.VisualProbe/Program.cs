@@ -103,6 +103,12 @@ public sealed class ProbeApp : Application
                     $"| {plan.Source.Group} | Source {plan.Source.SlideId} " +
                     $"| Template {layer?.Template.TemplateId ?? "(none)"} | " +
                     $"Unsupported: {string.Join(", ", warnings)}";
+                if (video != null)
+                {
+                    var cpu = video.CueDispatchMetrics.Snapshot();
+                    status.Text += $" | UI content swap p95={cpu.P95Ms:F3}ms" +
+                        " (NOT physical display latency)";
+                }
             }
 
             var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
