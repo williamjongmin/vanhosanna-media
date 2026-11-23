@@ -41,6 +41,13 @@ public sealed class FreeShowPreviewRegion : UserControl
         multiOutputs = new FreeShowMultiOutputPreview(settings, currentShow);
         clears = new FreeShowClearButtons(coordinator?.CurrentPreview(runtime) ??
             FreeShowPreviewControlState.Prepare(settings, originalOverlayDefinitions, runtime));
+        if (coordinator != null)
+        {
+            // The internal OperatorProbe supplies no physical runtime, so
+            // the UI remains read-only. When a complete runtime is installed,
+            // the actual source action can run through one guarded path.
+            clears.BindGuardedCoordinator(coordinator);
+        }
         clears.CategorySelected += (_, _) =>
         {
             // The original preview switches detail sections. No fake media,
