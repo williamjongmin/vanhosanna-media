@@ -125,7 +125,7 @@ public sealed class FreeShowOutputCommandCoordinator
             var problems = CheckReadiness(plans);
             if (problems.Count != 0)
                 return new(FreeShowCommandResultStatus.Refused,
-                    0, plans.Count, problems.AsReadOnly());
+                    0, plans.Count, problems);
 
             int executed = 0;
             foreach (var plan in plans)
