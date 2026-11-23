@@ -101,7 +101,7 @@ public sealed class FreeShowTopBar : UserControl
         root.Children.Add(center);
         root.Children.Add(right);
         Content = root;
-        UpdateButtons();
+        RebuildPageButtons();
     }
 
     /// <summary>
@@ -208,4 +208,4 @@ public sealed class FreeShowTopBar : UserControl
     }
 }
 
-public sealed record FreeShowPageRequestedEventArgs(string PageId);
+public sealed record FreeShowPageRequestedEventArgs(string PageId) : EventArgs;
