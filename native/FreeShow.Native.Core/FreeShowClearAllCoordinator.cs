@@ -172,6 +172,31 @@ public sealed partial class FreeShowOutputCommandCoordinator
             if (issues.Count != 0)
                 return new(FreeShowClearAllStatus.Refused, 0, issues);
 
+            // Validate every original Show lookup needed for focus-mode F2
+            // before touching cached state or external output devices.
+            var verifiedShows = new Dictionary<string, ShowDocument>(
+                StringComparer.Ordinal);
+            if (!plan.AlreadyCleared && context.FocusMode)
+            {
+                foreach (var id in plan.ActiveOutputIds)
+                {
+                    var slide = ShowDocument.Property(states[id].Snapshot(), "slide");
+                    var showId = ShowDocument.String(slide, "id");
+                    if (showId.Length == 0 || verifiedShows.ContainsKey(showId)) continue;
+                    ShowDocument? sourceShow;
+                    try { sourceShow = knownShowLookup?.Invoke(showId); }
+                    catch (Exception ex)
+                    {
+                        return new(FreeShowClearAllStatus.Refused, 0,
+                            ["Original Show lookup failed: " + ex.Message]);
+                    }
+                    if (sourceShow == null || sourceShow.ShowId != showId)
+                        return new(FreeShowClearAllStatus.Refused, 0,
+                            ["Original Show is missing or mismatched: " + showId]);
+                    verifiedShows.Add(showId, sourceShow);
+                }
+            }
+
             // Source clearAll first clears the slide-position cache, even
             // if everything is already cleared and the operation returns.
             slidePositionCache.Clear();
@@ -209,10 +234,10 @@ public sealed partial class FreeShowOutputCommandCoordinator
                             var slide = ShowDocument.Property(state.Snapshot(), "slide");
                             var showId = ShowDocument.String(slide, "id");
                             if (showId.Length == 0) continue;
-                            var sourceShow = knownShowLookup?.Invoke(showId) ??
-                                throw new NotSupportedException(
-                                    "Original Show missing for focus-mode F2 slide cache.");
-                            slidePositionCache.TryCapture(state, sourceShow, true);
+                            // All Shows were validated before the first
+                            // external step; no unverified callback runs here.
+                            slidePositionCache.TryCapture(
+                                state, verifiedShows[showId], true);
                         }
                     }
 
