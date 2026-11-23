@@ -962,6 +962,22 @@ using (var originalAudio = JsonDocument.Parse("""
     Check(!restoredAgain.IsSourceComplete,
         "Restore is single-use after complete acknowledgement");
 
+    // Commands prepared against one OutData revision cannot silently run
+    // after another controller changes that output.
+    var stalePlan = coordinator.PlanPreviewClearAction("background")[0];
+    Check(stalePlan.ExpectedNativeRevision.HasValue &&
+          coordinator.CheckReadiness([stalePlan]).Count > 0,
+        "Prepared action without a full runtime is not executable");
+    coordinator.States["display-a"].TryApply(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearBackground, "display-a"));
+    Check(coordinator.CheckReadiness([stalePlan]).Any(
+          x => x.Contains("changed since action preparation")),
+        "Outdated operator command is rejected after newer source state revision");
+    Check((await coordinator.DispatchPreparedAsync(
+        Array.Empty<FreeShowOutputCommandPlan>())).Status ==
+            FreeShowCommandResultStatus.Refused,
+        "Empty or unported command batch cannot falsely report completed");
+
     var zeroAudio = JsonDocument.Parse("[]");
     restoreCache.Capture(ids, coordinator.States, zeroAudio.RootElement, false);
     using var fullyCleared = JsonDocument.Parse("""
