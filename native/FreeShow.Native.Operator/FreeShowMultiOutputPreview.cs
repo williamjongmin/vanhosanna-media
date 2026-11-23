@@ -48,10 +48,28 @@ public sealed class FreeShowMultiOutputPreview : UserControl
     public void Refresh()
     {
         previews.Children.Clear();
-        var active = FreeShowOutputPreviewProjection.Prepare(configuration, sourceShow);
+        var captured = nativeStates == null ? null :
+            FreeShowOutputSnapshotBatch.Capture(configuration, nativeStates);
+        var active = FreeShowOutputPreviewProjection.Prepare(
+            configuration, sourceShow, captured);
         gridColumns = Math.Clamp(gridColumns, 1, Math.Max(1, active.Count));
         foreach (var entry in active)
-            previews.Children.Add(CreatePreview(entry));
+            previews.Children.Add(CreatePreview(entry, captured));
+
+        // If a command changed a slide/reveal while cards were being built,
+        // do not expose a mixture of new/old lyric visibility states.
+        if (captured != null && nativeStates != null &&
+            !captured.StillMatches(nativeStates))
+        {
+            previews.Children.Clear();
+            previews.Children.Add(new TextBlock
+            {
+                Text = "Source output changed during preview; refresh required",
+                Margin = new Thickness(4),
+                Foreground = Brushes.Gray,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
         ResizeCards();
     }
 
@@ -63,7 +81,8 @@ public sealed class FreeShowMultiOutputPreview : UserControl
             child.Width = cardWidth;
     }
 
-    private Control CreatePreview(FreeShowOutputPreviewEntry entry)
+    private Control CreatePreview(
+        FreeShowOutputPreviewEntry entry, FreeShowCapturedOutputBatch? captured)
     {
         var output = entry.Output;
         var color = Color.TryParse(output.Color, out var value)
@@ -97,22 +116,23 @@ public sealed class FreeShowMultiOutputPreview : UserControl
                 ShowDocument.IsTrue(item.Raw, "lineReveal"));
             if (requiresReveal)
             {
-                if (sourceStyles == null || nativeStates == null ||
-                    !nativeStates.TryGetValue(output.Id, out var native))
+                if (sourceStyles == null || captured == null ||
+                    !captured.IsCoherent ||
+                    !captured.Outputs.TryGetValue(output.Id, out var frozen))
                 {
-                    omission = "Original output style/reveal state unavailable";
+                    omission = "Original output style/reveal snapshot unavailable";
                 }
                 else
                 {
-                    var style = FreeShowRevealStyleResolver.Resolve(
-                        output.Id, configuration, sourceStyles, nativeStates);
+                    var style = FreeShowRevealStyleResolver.ResolveCaptured(
+                        output.Id, configuration, sourceStyles,
+                        captured.OutDataById);
                     if (!style.CanPrepare)
                         omission = style.Warning;
                     else
                     {
-                        var outSlide = ShowDocument.Property(native.Snapshot(), "slide");
                         var projected = FreeShowRevealRenderProjection.Prepare(
-                            candidate, outSlide, style.Context!);
+                            candidate, frozen.OutSlide, style.Context!);
                         if (!projected.IsSupported)
                             omission = string.Join("; ", projected.Unported);
                         else
