@@ -92,6 +92,38 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
     }
 
     /// <summary>
+    /// Prebuild one original FreeShow line/click-reveal state. The source
+    /// output must be resolved before worship playback. This may allocate
+    /// text controls during preparation, but never opens a video decoder.
+    /// </summary>
+    public bool PrewarmReveal(
+        int cue, System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (closing) throw new ObjectDisposedException(nameof(NativePersistentVideoOutput));
+        return lyrics.PrewarmReveal(cue, outSlide, style);
+    }
+
+    /// <summary>
+    /// Swap a prebuilt reveal view only. Like ShowCue, this must never touch
+    /// LibVLC, seek video or allocate new lyric controls in the hot path.
+    /// Metrics still measure synchronous dispatch, not visible-frame latency.
+    /// </summary>
+    public bool ShowPrewarmedReveal(
+        int cue, System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (closing) return false;
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Native reveal selection belongs to the UI thread.");
+        var started = Stopwatch.GetTimestamp();
+        var shown = lyrics.ShowPrewarmedReveal(cue, outSlide, style);
+        if (shown)
+            CueDispatchMetrics.Record(cue, Stopwatch.GetElapsedTime(started));
+        return shown;
+    }
+
+    /// <summary>
     /// FreeShow clearSlide()/F2: hide lyric overlay only; keep player,
     /// video timestamp and prepared slide cache unchanged.
     /// </summary>
