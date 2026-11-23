@@ -12,6 +12,15 @@ namespace FreeShow.Native.Core;
 /// </summary>
 public sealed partial class FreeShowOutputCommandCoordinator
 {
+    // Any external side effect that may have partially completed needs an
+    // authoritative synchronization before further source slide commands.
+    private readonly HashSet<string> slideTransitionNeedsReconciliation =
+        new(StringComparer.Ordinal);
+
+    public IReadOnlyList<string> UnreconciledSlideOutputs =>
+        slideTransitionNeedsReconciliation.OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
+
     public IReadOnlyList<string> CheckSlideTransitionReadiness(
         FreeShowSlideTransitionPlan plan,
         IReadOnlyDictionary<string, IFreeShowSlideTransitionRuntime> completeRuntimes)
@@ -38,6 +47,9 @@ public sealed partial class FreeShowOutputCommandCoordinator
 
         foreach (var target in plan.Targets)
         {
+            if (slideTransitionNeedsReconciliation.Contains(target.OutputId))
+                problems.Add(target.OutputId +
+                    ": previous physical slide transition requires authoritative reconciliation.");
             if (!active.Contains(target.OutputId) ||
                 !states.TryGetValue(target.OutputId, out var state) ||
                 state.Revision != target.ExpectedRevision)
@@ -136,6 +148,14 @@ public sealed partial class FreeShowOutputCommandCoordinator
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
+                if (physicalStepAttempted)
+                {
+                    // Conservative multi-output quarantine: a failed external
+                    // phase may already have changed one or more screens.
+                    // Never trust the stale plan for another physical action.
+                    foreach (var target in plan.Targets)
+                        slideTransitionNeedsReconciliation.Add(target.OutputId);
+                }
                 return new(physicalStepAttempted
                         ? FreeShowSlideTransitionStatus.PartialExecution
                         : FreeShowSlideTransitionStatus.Failed,
