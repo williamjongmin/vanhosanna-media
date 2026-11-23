@@ -30,6 +30,7 @@ public static class NativeRenderPlanner
             }
 
             var css = new CssDeclarations(item.Style);
+            var alignCss = new CssDeclarations(ShowDocument.String(item.Raw,"align"));
             string[] requiredLengths = ["left", "top", "width", "height", "font-size"];
             foreach (var key in requiredLengths)
                 if (css.Has(key) && css.Length(key) is null)
@@ -72,7 +73,10 @@ public static class NativeRenderPlanner
                 css.Get("color") is { Length: > 0 } color ? color : "white",
                 css.Get("font-family") is { Length: > 0 } font ? font : "CMGSans",
                 css.Get("font-weight"), css.Get("font-style"),
-                css.Get("text-align"), css.Get("line-height"),
+                css.Get("text-align") is { Length: > 0 } alignment ? alignment :
+                    alignCss.Get("text-align") is { Length: > 0 } lineAlignment ? lineAlignment : "center",
+                alignCss.Get("align-items") is { Length: > 0 } vertical ? vertical : "center",
+                css.Get("line-height"),
                 css, item, frame));
         }
 
@@ -95,7 +99,7 @@ public static class NativeRenderPlanner
 public sealed record NativeRect(double X,double Y,double Width,double Height);
 public sealed record NativeItemPlan(
     NativeRect Bounds, double FontSize, double Opacity, string Foreground, string FontFamily,
-    string FontWeight, string FontStyle, string Alignment, string LineHeight,
+    string FontWeight, string FontStyle, string Alignment, string VerticalAlignment, string LineHeight,
     CssDeclarations Style, SlideItem Source, SlideFrame Frame);
 public sealed record NativeFramePlan(
     SlideFrame Source, IReadOnlyList<NativeItemPlan> TextItems, IReadOnlyList<string> Unsupported)
