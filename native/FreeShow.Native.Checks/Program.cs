@@ -1409,6 +1409,27 @@ using (var navShowJson = JsonDocument.Parse("""
         Check(hidden.IsSupported && hidden.Visible.TextItems.Count == 0,
             "Original clickReveal initially hides its text item without clearing the slide background");
 
+        // 0.0.23 — a visual template which removes original reveal flags
+        // cannot silently expose the currently hidden source lyric.
+        using (var changedTemplateFlags = JsonDocument.Parse("""
+{"type":"text","clickReveal":false,"lineReveal":false}
+"""))
+        {
+            var changedSource = sourceFrame.Source with
+            {
+                Items = [
+                    sourceFrame.Source.Items[0] with
+                    { Raw = changedTemplateFlags.RootElement.Clone() }
+                ]
+            };
+            var inconsistent = sourceFrame with { Source = changedSource };
+            var blockedReveal = FreeShowRevealRenderProjection.Prepare(
+                inconsistent, initiallyHidden.RootElement, style);
+            Check(!blockedReveal.IsSupported &&
+                  blockedReveal.Unported.Any(x => x.Contains("template")),
+                "Template-changed original click/line flags cannot reveal hidden source lyrics");
+        }
+
         var firstVisible = FreeShowRevealRenderProjection.Prepare(
             sourceFrame, firstRevealed.RootElement, style);
         Check(firstVisible.IsSupported &&
