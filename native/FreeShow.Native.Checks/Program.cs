@@ -60,6 +60,56 @@ Check(css.Length("widthx") == null && css.Length("font-size") == null, "Missing 
 Check(CssDeclarations.ParseLength("calc(100% - 20px)") is null,
       "Unsupported CSS expressions are flagged, not silently guessed");
 
+// Copy-only FreeShow edit/export checks. These operate on synthetic fixture
+// files in a temporary directory and never touch the user's church data.
+var noop = new FreeShowShowExport(show);
+Check(!noop.IsModified, "New edit session is unchanged");
+Check(noop.ToShowBytes().SequenceEqual(bytes), "No-op export preserves source bytes exactly");
+
+var edits = new FreeShowShowExport(show);
+edits.Rename("Native Export Test");
+edits.ReplaceTextRun("verse", 0, 0, 0, "사랑의 하나님");
+var edited = ShowDocument.Parse(edits.ToShowBytes());
+Check(edits.IsModified, "Export session detects change");
+Check(edited.ShowId == show.ShowId, "Edited copy preserves FreeShow ID");
+Check(edited.Name == "Native Export Test", "Edited copy updates only requested title");
+Check(ShowDocument.Property(edited.Root, "unknownFutureField").ValueKind == JsonValueKind.Object,
+    "Edited copy preserves unknown future fields");
+Check(edited.ReadLayoutEntries().Select(x => x.SlideId).SequenceEqual(raw.Select(x => x.SlideId)),
+    "Edited copy preserves slide IDs and layout ordering");
+var editedFrame = SlideProjection.ReadFrames(edited)[0];
+Check(editedFrame.Items[0].Lines[0].Runs.Count == 2,
+    "Text editing preserves source run segmentation");
+Check(editedFrame.Items[0].Lines[0].Runs[0].Text == "사랑의 하나님" &&
+      editedFrame.Items[0].Lines[0].Runs[1].Text == " 찬양합니다",
+    "Text editing modifies only requested run");
+Check(editedFrame.Items[0].Lines[0].Runs[0].Style == "font-weight: bold;",
+    "Text run style is retained after copy edit");
+Check(show.OriginalBytes().SequenceEqual(bytes) && show.Name == "Native Compatibility Fixture",
+    "Original loaded source remains unchanged after copy edit");
+
+var temp = Path.Combine(Path.GetTempPath(), "freeshow-native-check-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(temp);
+try
+{
+    var exportPath = Path.Combine(temp, "Native Export Test.show");
+    await edits.ExportNewFileAsync(exportPath);
+    Check(File.Exists(exportPath), "Copy-only export creates new .show file");
+    Check((await ShowDocument.ReadAsync(exportPath)).ShowId == show.ShowId,
+        "Copied file can be re-read by original tuple parser");
+
+    bool collisionRefused = false;
+    try { await edits.ExportNewFileAsync(exportPath); }
+    catch (IOException) { collisionRefused = true; }
+    Check(collisionRefused, "Existing export file is never overwritten");
+    Check((await ShowDocument.ReadAsync(exportPath)).Name == "Native Export Test",
+        "Refused overwrite leaves existing copy intact");
+}
+finally
+{
+    Directory.Delete(temp, recursive: true);
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
