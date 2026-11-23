@@ -13,7 +13,7 @@ public sealed class FreeShowReadOnlyShowCatalog
     private readonly SemaphoreSlim scanLock = new(1, 1);
     private readonly Dictionary<string, string> paths = new(StringComparer.Ordinal);
     private readonly List<string> warnings = new();
-    private bool indexed;
+    private volatile bool indexed;
 
     public FreeShowReadOnlyShowCatalog(string freeShowDataRoot)
     {
