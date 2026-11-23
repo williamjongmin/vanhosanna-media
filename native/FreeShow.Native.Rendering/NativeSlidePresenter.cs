@@ -49,11 +49,14 @@ public sealed class NativeSlidePresenter : ContentControl
 
         foreach (var item in frame.TextItems)
         {
-            var style = item.Style;
-            var text = new TextBlock
+            var wrapper = new Grid
             {
                 Width = item.Bounds.Width,
                 Height = item.Bounds.Height,
+                ClipToBounds = true
+            };
+            var text = new TextBlock
+            {
                 FontSize = item.FontSize,
                 Foreground = Brush(item.Foreground, Brushes.White),
                 FontFamily = new FontFamily(item.FontFamily.Trim('"', '\'')),
@@ -61,6 +64,9 @@ public sealed class NativeSlidePresenter : ContentControl
                 FontStyle = item.FontStyle.Equals("italic", StringComparison.OrdinalIgnoreCase)
                     ? FontStyle.Italic : FontStyle.Normal,
                 TextAlignment = Alignment(item.Alignment),
+                VerticalAlignment = item.VerticalAlignment == "flex-start" ? VerticalAlignment.Top :
+                    item.VerticalAlignment == "flex-end" ? VerticalAlignment.Bottom : VerticalAlignment.Center,
+                Inlines = new InlineCollection(),
                 Opacity = item.Opacity,
                 TextWrapping = TextWrapping.Wrap,
                 ClipToBounds = true
@@ -91,9 +97,10 @@ public sealed class NativeSlidePresenter : ContentControl
                     text.Inlines?.Add(inline);
                 }
             }
-            Canvas.SetLeft(text, item.Bounds.X);
-            Canvas.SetTop(text, item.Bounds.Y);
-            canvas.Children.Add(text);
+            wrapper.Children.Add(text);
+            Canvas.SetLeft(wrapper, item.Bounds.X);
+            Canvas.SetTop(wrapper, item.Bounds.Y);
+            canvas.Children.Add(wrapper);
         }
 
         return new Viewbox
