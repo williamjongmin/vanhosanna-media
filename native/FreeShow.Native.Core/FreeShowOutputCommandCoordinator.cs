@@ -283,6 +283,13 @@ public sealed class FreeShowOutputCommandCoordinator
         if (!states.TryGetValue(plan.OutputId, out var state))
             return; // F4 audio is global, not part of OutData.
 
+        // Original clearSlide() invokes clearTimers("", false), which
+        // clears out.transition separately from the lyric and does NOT
+        // cancel running overlay timers. Update the in-memory state only
+        // after the corresponding source runtime has acknowledged it.
+        if (plan.RequiredEffects.Contains(FreeShowSourceEffect.CancelNextSlideTimers))
+            state.ClearTransition();
+
         switch (plan.SourceAction.Command)
         {
             case NativeShortcutCommand.ClearBackground:
