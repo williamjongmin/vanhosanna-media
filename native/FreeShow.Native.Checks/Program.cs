@@ -715,6 +715,7 @@ using (var originalOverlays = JsonDocument.Parse("""
               FreeShowSourceEffect.CaptureLastSlidePositionIfEligible,
               FreeShowSourceEffect.CancelNextSlideTimers,
               FreeShowSourceEffect.ClearSlideOutput,
+              FreeShowSourceEffect.PropagateOutputChanged,
               FreeShowSourceEffect.NotifySlideCleared,
               FreeShowSourceEffect.RecordTimelineClearSlide]),
           "Original F2 effect order caches position, cancels timer, clears lyrics and notifies actions");
@@ -761,7 +762,9 @@ using (var originalOverlays = JsonDocument.Parse("""
     fake2.AddCapabilities([
         FreeShowSourceEffect.CaptureLastSlidePositionIfEligible,
         FreeShowSourceEffect.CancelNextSlideTimers,
-        FreeShowSourceEffect.NotifySlideCleared]);
+        FreeShowSourceEffect.PropagateOutputChanged,
+        FreeShowSourceEffect.NotifySlideCleared,
+        FreeShowSourceEffect.RecordTimelineClearSlide]);
     var screen2Slide = FreeShowOutputCommandPlanner.Prepare(
         new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "screen2"), config);
     Check((await controller.DispatchPreparedAsync([screen2Slide])).Succeeded &&
