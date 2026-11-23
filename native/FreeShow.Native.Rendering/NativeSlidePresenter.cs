@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
+using System.Text.Json;
 using FreeShow.Native.Core;
 using System.Globalization;
 
@@ -17,6 +19,12 @@ public sealed class NativeSlidePresenter : ContentControl
 {
     private readonly List<(NativeFramePlan Frame, Viewbox Visual)> prepared = new();
     private readonly NativeStillImageCache images = new();
+    private readonly Dictionary<NativeRevealCacheKey, Viewbox> revealVariants = new();
+    private readonly List<FreeShowOutputLayerPlan?> outputLayerPlans = new();
+    private Func<string, string?>? imageResolver;
+    private bool overlayOnly;
+    private NativeRevealCacheKey? activeRevealVariant;
+    private const int MaximumPreparedRevealVariants = 384;
     public int CurrentIndex { get; private set; } = -1;
     public IReadOnlyList<NativeFramePlan> Frames => prepared.Select(x => x.Frame).ToArray();
 
@@ -30,8 +38,13 @@ public sealed class NativeSlidePresenter : ContentControl
 
         Content = null;
         prepared.Clear();
+        revealVariants.Clear();
+        outputLayerPlans.Clear();
         images.Dispose();
+        imageResolver = localStillImagePath;
+        overlayOnly = lyricsOnlyOverlay;
         CurrentIndex = -1;
+        activeRevealVariant = null;
 
         for (var i = 0; i < frames.Count; i++)
         {
@@ -39,6 +52,7 @@ public sealed class NativeSlidePresenter : ContentControl
             if (output != null && output.Frame.SlideId != frames[i].Source.SlideId)
                 throw new ArgumentException("Output plan order does not match source frames.", nameof(outputPlans));
             prepared.Add((frames[i], Build(frames[i], output, localStillImagePath, lyricsOnlyOverlay)));
+            outputLayerPlans.Add(output);
         }
     }
 
@@ -50,26 +64,87 @@ public sealed class NativeSlidePresenter : ContentControl
     {
         Content = null;
         CurrentIndex = -1;
+        activeRevealVariant = null;
     }
 
     public void ClearPrepared()
     {
         Content = null;
         prepared.Clear();
+        revealVariants.Clear();
+        outputLayerPlans.Clear();
         CurrentIndex = -1;
+        activeRevealVariant = null;
         images.Dispose();
     }
 
     public bool Show(int index)
     {
         if (index < 0 || index >= prepared.Count) return false;
-        if (index == CurrentIndex) return true;
+        if (index == CurrentIndex && activeRevealVariant == null) return true;
         // Only swap a prebuilt visual; no parsing, text layout object creation
         // or synchronous file I/O is performed on this path.
         Content = prepared[index].Visual;
         CurrentIndex = index;
+        activeRevealVariant = null;
         return true;
     }
+
+    /// <summary>
+    /// Precompute a source reveal state while preparing a show, never in the
+    /// cue hot path. Only fully supported text states are cached; original
+    /// display/playlist/actions are not silently executed by this visual.
+    /// The native persistent video decoder is not accessed here.
+    /// </summary>
+    public bool PrewarmReveal(
+        int nativeCueOrdinal, JsonElement outSlide,
+        FreeShowRevealStyleContext outputStyle)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Reveal visual preparation belongs to the UI thread.");
+        if (nativeCueOrdinal < 0 || nativeCueOrdinal >= prepared.Count)
+            return false;
+
+        var key = NativeRevealCacheKey.From(nativeCueOrdinal, outSlide, outputStyle);
+        if (key == null) return false;
+        if (revealVariants.ContainsKey(key.Value)) return true;
+        if (revealVariants.Count >= MaximumPreparedRevealVariants) return false;
+
+        var projection = FreeShowRevealRenderProjection.Prepare(
+            prepared[nativeCueOrdinal].Frame, outSlide, outputStyle);
+        if (!projection.IsSupported) return false;
+
+        // This allocates Avalonia controls only during prewarm. A subsequent
+        // ShowPrewarmedReveal does exactly one cached Content swap.
+        var view = Build(projection.Visible, outputLayerPlans[nativeCueOrdinal],
+            imageResolver, overlayOnly);
+        revealVariants.Add(key.Value, view);
+        return true;
+    }
+
+    /// <summary>
+    /// Live cue-time primitive: no source parsing, text control creation,
+    /// disk access or decoder interaction. Returns false for any reveal
+    /// state not explicitly prepared in advance.
+    /// </summary>
+    public bool ShowPrewarmedReveal(
+        int nativeCueOrdinal, JsonElement outSlide,
+        FreeShowRevealStyleContext outputStyle)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Reveal selection belongs to the UI thread.");
+        var key = NativeRevealCacheKey.From(nativeCueOrdinal, outSlide, outputStyle);
+        if (key == null || !revealVariants.TryGetValue(key.Value, out var view))
+            return false;
+        if (CurrentIndex == nativeCueOrdinal && activeRevealVariant == key.Value)
+            return true;
+        Content = view;
+        CurrentIndex = nativeCueOrdinal;
+        activeRevealVariant = key.Value;
+        return true;
+    }
+
+    public int PreparedRevealVariantCount => revealVariants.Count;
 
     private Viewbox Build(NativeFramePlan frame, FreeShowOutputLayerPlan? output,
         Func<string, string?>? localStillImagePath, bool lyricsOnlyOverlay)
@@ -222,4 +297,47 @@ public sealed class NativeSlidePresenter : ContentControl
             "justify" => TextAlignment.Justify,
             _ => TextAlignment.Left
         };
+}
+
+
+/// <summary>
+/// Stable cache key for a prepared output state. An invalid or missing
+/// source index is never accidentally aliased to the first slide.
+/// </summary>
+internal readonly record struct NativeRevealCacheKey(
+    int NativeCueOrdinal, int LayoutIndex,
+    int Line, int RevealCount, bool ItemClickReveal,
+    FreeShowRevealStyleContext Style)
+{
+    public static NativeRevealCacheKey? From(
+        int cueOrdinal, JsonElement sourceOutSlide,
+        FreeShowRevealStyleContext outputStyle)
+    {
+        if (outputStyle == null || cueOrdinal < 0 ||
+            sourceOutSlide.ValueKind != JsonValueKind.Object)
+            return null;
+        var index = ShowDocument.Property(sourceOutSlide, "index");
+        if (index.ValueKind != JsonValueKind.Number ||
+            !index.TryGetInt32(out var layoutIndex) || layoutIndex < 0)
+            return null;
+
+        static int? Position(JsonElement source, string name)
+        {
+            var raw = ShowDocument.Property(source, name);
+            if (raw.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                return 0;
+            return raw.ValueKind == JsonValueKind.Number &&
+                   raw.TryGetInt32(out var position) && position >= 0
+                ? position : null;
+        }
+
+        var line = Position(sourceOutSlide, "line");
+        var reveal = Position(sourceOutSlide, "revealCount");
+        if (line == null || reveal == null) return null;
+
+        return new NativeRevealCacheKey(
+            cueOrdinal, layoutIndex, line.Value, reveal.Value,
+            ShowDocument.IsTrue(sourceOutSlide, "itemClickReveal"),
+            outputStyle);
+    }
 }
