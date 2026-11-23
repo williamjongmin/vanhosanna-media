@@ -41,6 +41,25 @@ var invalid = ShowDocument.Parse(changed);
 Check(invalid.ValidateLayout().Any(x => x.Contains("verse-child-2")),
     "Broken slide reference detected without modifying source");
 
+var plans = NativeRenderPlanner.Prepare(show);
+Check(plans.Count == 3, "Enabled native render plans include all visible source slides");
+Check(plans[0].TextItems.Count == 1, "Original first-slide text item count");
+Check(plans[0].TextItems[0].FontSize == 80, "Source font-size: 80px preserved");
+Check(plans[0].TextItems[0].Bounds.Width == 400 &&
+      plans[0].TextItems[0].Bounds.Height == 150, "Original Zoomed.svelte CSS box defaults");
+Check(plans[0].TextItems[0].Source.Lines[0].Runs.Count == 2, "Text formatting runs survive native plan");
+Check(plans[0].TextItems[0].Alignment == "center", "Original TextboxLines.svelte default center alignment");
+Check(NativeRenderPlanner.Prepare(show, includeDisabled: true)[2].Unsupported
+      .Any(w => w.Contains("Non-text item")), "Unsupported media flagged, never silently dropped");
+
+var css = new CssDeclarations("left: 25%; width: 960px; opacity: 0.4; color: #ffffff; left: 10%;");
+Check(css.Length("left")?.Resolve(1920) == 192, "CSS last declaration wins and percent width resolves");
+Check(css.Length("width")?.Resolve(1920) == 960, "CSS px values resolve without conversion");
+Check(css.Number("opacity") == 0.4, "CSS opacity parsed invariantly");
+Check(css.Length("widthx") == null && css.Length("font-size") == null, "Missing CSS stays missing");
+Check(CssDeclarations.ParseLength("calc(100% - 20px)") is null,
+      "Unsupported CSS expressions are flagged, not silently guessed");
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
