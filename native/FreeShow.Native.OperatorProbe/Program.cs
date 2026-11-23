@@ -46,9 +46,12 @@ internal static class Program
                     FreeShowOutputConfiguration.ReadAsync(settingsPath)
                         .GetAwaiter().GetResult();
             if (dataRoot != null)
+            {
+                OperatorProbeApp.ReadOnlyCatalog = new FreeShowReadOnlyShowCatalog(dataRoot);
                 OperatorProbeApp.Projects =
                     FreeShowProjectLibrary.OpenAsync(dataRoot)
                         .GetAwaiter().GetResult();
+            }
 
             return AppBuilder.Configure<OperatorProbeApp>()
                 .UsePlatformDetect().LogToTrace()
@@ -75,6 +78,7 @@ public sealed class OperatorProbeApp : Application
     internal static ShowDocument? Source { get; set; }
     internal static FreeShowOutputConfiguration? LocalOutputSettings { get; set; }
     internal static FreeShowProjectLibrary? Projects { get; set; }
+    internal static FreeShowReadOnlyShowCatalog? ReadOnlyCatalog { get; set; }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -90,21 +94,74 @@ public sealed class OperatorProbeApp : Application
             workspace.InstallTopBar(top);
 
             var originalShow = new FreeShowShowRegion(Source);
+            var browser = Projects != null ? new FreeShowProjectBrowser(Projects) : null;
+            Control projectsRegion = browser ?? (Control)new Border();
 
-            // Source Projects.svelte has a folder/project tree, not a separate
-            // fabricated source of media. Keep the list purely read-only.
-            Control projectsRegion = Projects != null
-                ? new FreeShowProjectTree(Projects) : new Border();
+            void DisplaySelectedShow(ShowDocument? selected)
+            {
+                // The chosen source item may be a section or media file.
+                // Those types must not be shown using an unrelated lyric show.
+                Control center = selected == null
+                    ? new Border() : new FreeShowShowRegion(selected);
+                workspace.RegisterPageRegions("show",
+                    new FreeShowPageRegions(projectsRegion, center, null));
+                if (LocalOutputSettings != null)
+                    workspace.RightPreviewHost.Content =
+                        new FreeShowMultiOutputPreview(LocalOutputSettings, selected);
+            }
 
             workspace.RegisterPageRegions("show",
                 new FreeShowPageRegions(projectsRegion, originalShow, null));
-
             if (LocalOutputSettings != null)
-            {
-                // Preview source uses the original SETTINGS output IDs and
-                // present OutData.slide references, not a fake preview stream.
                 workspace.RightPreviewHost.Content =
                     new FreeShowMultiOutputPreview(LocalOutputSettings, Source);
+
+            int selectionVersion = 0;
+            CancellationTokenSource? selectionCancellation = null;
+            if (browser != null)
+            {
+                browser.ItemSelected += async (_, args) =>
+                {
+                    // User-selection-only operation. No output, writes, history,
+                    // media playback or FreeShow global store mutation.
+                    selectionCancellation?.Cancel();
+                    var nextRequest = new CancellationTokenSource();
+                    selectionCancellation = nextRequest;
+                    int myVersion = ++selectionVersion;
+
+                    ShowDocument? selected = null;
+                    try
+                    {
+                        if (args.Item.IsShow)
+                        {
+                            if (args.Item.Id == Source.ShowId)
+                                selected = Source;
+                            else if (ReadOnlyCatalog != null)
+                                selected = await Task.Run(
+                                    () => ReadOnlyCatalog.FindAsync(
+                                        args.Item.Id, nextRequest.Token),
+                                    nextRequest.Token);
+                        }
+
+                        if (myVersion == selectionVersion &&
+                            !nextRequest.IsCancellationRequested)
+                            DisplaySelectedShow(selected);
+                    }
+                    catch (OperationCanceledException) { /* newer selection wins */ }
+                    catch (Exception error)
+                    {
+                        Console.Error.WriteLine("Read-only project item load: " +
+                            error.GetType().Name + ": " + error.Message);
+                        if (myVersion == selectionVersion)
+                            DisplaySelectedShow(null);
+                    }
+                    finally
+                    {
+                        if (ReferenceEquals(selectionCancellation, nextRequest))
+                            selectionCancellation = null;
+                        nextRequest.Dispose();
+                    }
+                };
             }
 
             // Original Slide.svelte live click runs custom actions, reveal,
@@ -115,6 +172,11 @@ public sealed class OperatorProbeApp : Application
                 Width = 1600, Height = 900,
                 Background = Brushes.Black,
                 Content = workspace
+            };
+            window.Closed += (_, _) =>
+            {
+                selectionVersion++;
+                selectionCancellation?.Cancel();
             };
             desktop.MainWindow = window;
         }
