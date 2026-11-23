@@ -30,19 +30,28 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
         FreeShowVisualSettings settings, string freeShowDataRoot,
         Func<string, FreeShowMediaReference>? mediaResolver = null)
         : this(
-            profile?.Id ?? throw new ArgumentNullException(nameof(profile)),
+            ValidatePhysicalOutput(profile),
             source, settings, profile.StyleId, freeShowDataRoot,
             ActiveBackgroundId(profile), mediaResolver)
     {
+    }
+
+    private static string ValidatePhysicalOutput(FreeShowConfiguredOutput? profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
         if (profile.StageSourceId != null)
             throw new NotSupportedException(
                 "Original FreeShow Stage output requires stage-specific native rendering.");
-        if (profile.NeedsUnportedStreamingBackend)
+        if (profile.NeedsUnportedStreamingBackend || profile.Invisible)
             throw new NotSupportedException(
-                "Original FreeShow network/capture output requires its native streaming backend.");
+                "Original FreeShow capture/network output requires its native backend.");
         if (profile.Transparent)
             throw new NotSupportedException(
                 "Original FreeShow transparent output composition has not been ported.");
+        if (!profile.Enabled)
+            throw new InvalidOperationException(
+                "Native cannot activate a source FreeShow output which is disabled.");
+        return profile.Id;
     }
 
     private static string? ActiveBackgroundId(FreeShowConfiguredOutput profile)
