@@ -132,6 +132,64 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
             "Original source slide is disabled, missing or not prepared in this native output.");
     }
 
+    /// <summary>
+    /// Build one source-outSlide reveal variant during preparation. This
+    /// path checks Show/layout/source indexes and media support first.
+    /// Full updateOut/actions/timer parity is still unported, so these
+    /// variants are developer previews rather than a live command bridge.
+    /// </summary>
+    public bool PrewarmReveal(
+        System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (disposed) return false;
+        int? cue = FindPreparedRevealCue(outSlide);
+        return cue.HasValue && Visual.PrewarmReveal(cue.Value, outSlide, style);
+    }
+
+    /// <summary>
+    /// Present an already-prepared reveal variant without interacting with
+    /// the decoder. No missing variant is generated in this hot path.
+    /// </summary>
+    public bool ShowPrewarmedReveal(
+        System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (disposed) return false;
+        int? cue = FindPreparedRevealCue(outSlide);
+        if (!cue.HasValue) return false;
+        bool shown = Visual.ShowPrewarmedReveal(cue.Value, outSlide, style);
+        if (shown)
+        {
+            CurrentCue = cue.Value;
+            LastClearedCue = -1;
+        }
+        return shown;
+    }
+
+    private int? FindPreparedRevealCue(System.Text.Json.JsonElement outSlide)
+    {
+        if (outSlide.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            ShowDocument.String(outSlide, "id") != PreparedShowId ||
+            ShowDocument.String(outSlide, "layout") != PreparedLayoutId)
+            return null;
+        var index = ShowDocument.Property(outSlide, "index");
+        if (index.ValueKind != System.Text.Json.JsonValueKind.Number ||
+            !index.TryGetInt32(out int original) || original < 0)
+            return null;
+
+        for (int cue = 0; cue < preparedFrames.Count; cue++)
+        {
+            if (preparedFrames[cue].Source.LayoutIndex != original) continue;
+            if (cue >= videoCues.Count ||
+                videoCues[cue].LayoutIndex != original ||
+                videoCues[cue].Unsupported.Count != 0)
+                return null;
+            return cue;
+        }
+        return null;
+    }
+
     public bool ShowCue(int index)
     {
         if (disposed) return false;
