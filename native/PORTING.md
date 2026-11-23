@@ -60,6 +60,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.7 Persistent local video architecture:** LibVLCSharp.Avalonia output keeps the background decoder outside the `ShowCue` path; prebuilt lyrics are swapped in a transparent native overlay. A dedicated owner is provided per physical output ID. Local single-background video only; two-layer compositing, media transitions and external feeds remain unsupported. See `VIDEO-OUTPUT-STATUS.md`. No physical speed measurement.
 
+- **0.0.8 Instrumentation:** `NativeCueDispatchMetrics` records bounded p50/p95/p99/max synchronous Avalonia content-swap timings. This is NOT user-input-to-physical-display latency; see `PERFORMANCE-MEASUREMENT.md`. Code checks are written but not executed.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
