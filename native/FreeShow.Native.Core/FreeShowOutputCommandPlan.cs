@@ -27,7 +27,7 @@ public static class FreeShowOutputCommandPlanner
                 return Unsupported(input, "Audio belongs to FreeShow global playback, not a physical output ID.");
             return new(input, null,
                 [FreeShowSourceEffect.ClearGlobalAudioAndPlaylist,
-                 FreeShowSourceEffect.NotifyAudioCleared],
+                 FreeShowSourceEffect.RecordTimelineClearAudio],
                 Array.Empty<string>(), Array.Empty<string>());
         }
 
@@ -50,6 +50,7 @@ public static class FreeShowOutputCommandPlanner
                 effects.Add(FreeShowSourceEffect.ClearActiveBackground);
                 effects.Add(FreeShowSourceEffect.ClearBackgroundCredits);
                 effects.Add(FreeShowSourceEffect.NotifyBackgroundCleared);
+                effects.Add(FreeShowSourceEffect.RecordTimelineClearBackground);
                 break;
 
             case NativeShortcutCommand.ClearSlide:
@@ -62,6 +63,7 @@ public static class FreeShowOutputCommandPlanner
                 effects.Add(FreeShowSourceEffect.CancelNextSlideTimers);
                 effects.Add(FreeShowSourceEffect.ClearSlideOutput);
                 effects.Add(FreeShowSourceEffect.NotifySlideCleared);
+                effects.Add(FreeShowSourceEffect.RecordTimelineClearSlide);
                 break;
 
             case NativeShortcutCommand.ClearOverlays:
@@ -80,10 +82,19 @@ public static class FreeShowOutputCommandPlanner
                 }
                 effects.Add(FreeShowSourceEffect.ClearUnlockedOverlaysKeepingLocked);
                 effects.Add(FreeShowSourceEffect.ClearEffects);
+                effects.Add(FreeShowSourceEffect.RecordTimelineClearOverlays);
+                break;
+
+            case NativeShortcutCommand.ClearAllOverlaysForShortcut:
+                // shortcuts.ts F3 uses setOutput("overlays", []) directly,
+                // unlike the Preview ClearButtons.svelte clearOverlays()
+                // function that preserves locked overlay IDs.
+                effects.Add(FreeShowSourceEffect.ClearAllOverlays);
                 break;
 
             case NativeShortcutCommand.ClearEffects:
                 effects.Add(FreeShowSourceEffect.ClearEffects);
+                effects.Add(FreeShowSourceEffect.RecordTimelineClearOverlays);
                 break;
 
             case NativeShortcutCommand.Next:
@@ -127,15 +138,19 @@ public enum FreeShowSourceEffect
     ClearActiveBackground,
     ClearBackgroundCredits,
     NotifyBackgroundCleared,
+    RecordTimelineClearBackground,
     CaptureLastSlidePositionIfEligible,
     ClearSlideCache,
     CancelNextSlideTimers,
     ClearSlideOutput,
     NotifySlideCleared,
+    RecordTimelineClearSlide,
     ClearUnlockedOverlaysKeepingLocked,
+    ClearAllOverlays,
     ClearEffects,
+    RecordTimelineClearOverlays,
     ClearGlobalAudioAndPlaylist,
-    NotifyAudioCleared
+    RecordTimelineClearAudio
 }
 
 public sealed record FreeShowOutputCommandPlan(
