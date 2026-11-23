@@ -54,6 +54,25 @@ public sealed class FreeShowProjectBrowser : UserControl
         body.Content = tree;
     }
 
+    /// <summary>
+    /// Inspect the original OutputHelper project-boundary decision against
+    /// the currently viewed project content. Selection remains unchanged;
+    /// editor, timeline, section actions and live output are NOT invoked.
+    /// </summary>
+    public FreeShowProjectAdvanceResult InspectProjectBoundary(
+        System.Text.Json.JsonElement actualOutSlide,
+        FreeShowSlideAdvanceDirection direction,
+        bool focusMode, bool nextItemOnLastSlide,
+        bool anyOtherOutputStillAdvancing = false)
+    {
+        if (current == null)
+            return new(FreeShowProjectAdvanceStatus.Refused,
+                null, [], "No original FreeShow project is currently open.");
+        return FreeShowProjectAdvancePlanner.Prepare(
+            current, actualOutSlide, navigation.ActiveItem, direction,
+            focusMode, nextItemOnLastSlide, anyOtherOutputStillAdvancing);
+    }
+
     public void SelectSourceItem(int index)
     {
         if (current == null)
