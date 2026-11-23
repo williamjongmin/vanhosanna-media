@@ -110,6 +110,45 @@ finally
     Directory.Delete(temp, recursive: true);
 }
 
+// Visual settings and independent output-layer checks. Original files never
+// opened: fixture settings are created under a throwaway directory.
+var visualRoot = Path.Combine(Path.GetTempPath(), "freeshow-visual-check-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(Path.Combine(visualRoot, "Config"));
+try
+{
+    await File.WriteAllTextAsync(Path.Combine(visualRoot, "Config", "settings_synced.json"),
+        """{"styles":{"worship":{"name":"Worship","background":"#111111","backgroundImage":"local-background.png","template":"lyrics","layers":["background","slide","overlays"],"transition":{"text":{"type":"fade","duration":300}}}}}""");
+    await File.WriteAllTextAsync(Path.Combine(visualRoot, "Config", "templates.json"),
+        """{"lyrics":{"name":"Lyrics","items":[],"settings":{"backgroundColor":"#222222","firstSlideTemplate":"lyrics-first"}},"lyrics-first":{"name":"First","items":[],"settings":{"backgroundColor":"#333333"}}}""");
+    var visual = await FreeShowVisualSettings.OpenAsync(visualRoot);
+    Check(visual.HasSettingsFile && visual.HasTemplatesFile, "Original FreeShow config files discovered");
+    var layers = FreeShowOutputLayerPlanner.Prepare(show, visual, "worship");
+    Check(layers.Count == 3, "One output compositing plan for every enabled FreeShow slide");
+    Check(layers[0].Template.TemplateId == "lyrics-first" &&
+          layers[0].Template.UsedFirstSlideOverride, "Original first-slide template selection");
+    Check(layers[1].Template.TemplateId == "lyrics" &&
+          !layers[1].Template.UsedFirstSlideOverride, "Normal template after first slide");
+    Check(layers[0].BackgroundColor == "#333333", "Template background color overrides output style");
+    Check(layers[0].StyleBackgroundId == "local-background.png", "Style background layer retained");
+    Check(layers[0].EnabledLayers.SequenceEqual(new[] {"background", "slide", "overlays"}),
+          "Original output layer order retained");
+    Check(layers[0].TextTransition.Type == "fade" && layers[0].TextTransition.DurationMs == 300,
+          "Original output transition duration retained");
+    Check(layers[0].Unsupported.Any(x => x.Contains("not rendered yet")),
+          "Unsupported image/video rendering cannot silently appear equivalent");
+
+    Check(FreeShowMediaLookup.Classify("background.png", "") == NativeMediaKind.Image,
+          "Native still background detection");
+    Check(FreeShowMediaLookup.Classify("background.mp4", "") == NativeMediaKind.Video,
+          "Video is classified but never mistaken for static image");
+    Check(FreeShowMediaLookup.Resolve(show, "asset://existing").Id == "asset://existing",
+          "Original FreeShow media identity retained");
+}
+finally
+{
+    Directory.Delete(visualRoot, recursive: true);
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
