@@ -1443,6 +1443,32 @@ using (var navShowJson = JsonDocument.Parse("""
             "Reveal projection refuses a state from another source slide index");
         unrelatedSourceIndex.Dispose();
     }
+    using (var prewarmInitial = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":0,"revealCount":0,"itemClickReveal":false}
+"""))
+    {
+        var timeline = FreeShowRevealPrewarmSequence.PrepareSingleOutput(
+            source, sourceFrame, prewarmInitial.RootElement, "screen1",
+            new FreeShowRevealStyleContext(1, 1, 0),
+            activeNormalOutputCount:1,
+            matchesSourceOutput:(_, _) => false);
+        Check(timeline.CanPrewarmCompleteSlide &&
+              timeline.States.Count >= 4 &&
+              timeline.States[0].OutSlide.ValueKind == JsonValueKind.Object,
+            "Single-output FreeShow reveal stages can be prepared entirely before pressing Next");
+        Check(!FreeShowRevealPrewarmSequence.PrepareSingleOutput(
+            source, sourceFrame, prewarmInitial.RootElement, "screen1",
+            new FreeShowRevealStyleContext(1, 1, 0),
+            activeNormalOutputCount:2).CanPrewarmCompleteSlide,
+            "Multi-output line synchronization is not guessed during one-screen reveal prewarm");
+        Check(!FreeShowRevealPrewarmSequence.PrepareSingleOutput(
+            source, sourceFrame, prewarmInitial.RootElement, "screen1",
+            new FreeShowRevealStyleContext(1, 1, 0),
+            activeNormalOutputCount:1, maximumStates:2,
+            matchesSourceOutput:(_, _) => false).CanPrewarmCompleteSlide,
+            "Incomplete bounded reveal prewarm queue never enables an uncached live transition");
+    }
     var noSlide = JsonDocument.Parse("{}");
     var first = FreeShowSlideAdvancePlanner.Prepare(
         source, noSlide.RootElement, "screen1",
