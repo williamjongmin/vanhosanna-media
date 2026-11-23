@@ -99,6 +99,12 @@ public sealed class OperatorProbeApp : Application
             var originalShow = new FreeShowShowRegion(Source);
             var browser = Projects != null ? new FreeShowProjectBrowser(Projects) : null;
             Control projectsRegion = browser ?? (Control)new Border();
+            // Read-only command state follows exactly the original settings
+            // outputs and overlay locks. No live runtime or action callbacks
+            // are registered in this developer preview.
+            var guardedControls = LocalOutputSettings == null
+                ? null : new FreeShowOutputCommandCoordinator(
+                    LocalOutputSettings, VisualSettings?.Overlays ?? default);
 
             void DisplaySelectedShow(ShowDocument? selected, string? arrangementId = null)
             {
@@ -111,7 +117,7 @@ public sealed class OperatorProbeApp : Application
                 if (LocalOutputSettings != null)
                     workspace.RightPreviewHost.Content =
                         new FreeShowPreviewRegion(LocalOutputSettings, selected,
-                        VisualSettings?.Overlays ?? default);
+                        VisualSettings?.Overlays ?? default, outputController: guardedControls);
             }
 
             workspace.RegisterPageRegions("show",
@@ -119,7 +125,7 @@ public sealed class OperatorProbeApp : Application
             if (LocalOutputSettings != null)
                 workspace.RightPreviewHost.Content =
                     new FreeShowPreviewRegion(LocalOutputSettings, Source,
-                    VisualSettings?.Overlays ?? default);
+                    VisualSettings?.Overlays ?? default, outputController: guardedControls);
 
             int selectionVersion = 0;
             CancellationTokenSource? selectionCancellation = null;
