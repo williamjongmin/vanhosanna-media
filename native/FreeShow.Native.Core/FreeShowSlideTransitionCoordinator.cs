@@ -146,6 +146,15 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 return new(FreeShowSlideTransitionStatus.Completed, acknowledged,
                     Array.Empty<string>());
             }
+            catch (OperationCanceledException) when (physicalStepAttempted)
+            {
+                foreach (var target in plan.Targets)
+                    slideTransitionNeedsReconciliation.Add(target.OutputId);
+                return new(FreeShowSlideTransitionStatus.PartialExecution,
+                    acknowledged,
+                    ["Slide transition was cancelled after physical work began; " +
+                     "full output reconciliation is required."]);
+            }
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 if (physicalStepAttempted)
