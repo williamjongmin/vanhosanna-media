@@ -32,6 +32,102 @@ public sealed class FreeShowOutputCommandCoordinator
     public IReadOnlyDictionary<string, FreeShowOutputState> States => states;
 
     /// <summary>
+    /// The source keeps independent output IDs; snapshots are restored only
+    /// for output IDs which remain active. This gate is shared with ordinary
+    /// commands so native state is never committed between a clear and its
+    /// acknowledged full restore.
+    /// </summary>
+    public async Task<FreeShowRestoreResult> RestoreAsync(
+        FreeShowOutputRestoreCache cache,
+        IFreeShowOutputRestoreRuntime runtime,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        ArgumentNullException.ThrowIfNull(runtime);
+
+        await executeGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (ShowDocument.IsTrue(configuration.RawSettings, "outLocked"))
+                return new(FreeShowRestoreStatus.Refused, 0,
+                    ["Original FreeShow output is locked."]);
+
+            var active = configuration.GetActiveNormalOutputs()
+                .Select(x => x.Id).ToArray();
+            var plan = cache.PlanRestore(active, states);
+            if (!plan.IsSourceComplete)
+                return new(FreeShowRestoreStatus.Refused, 0, plan.Warnings);
+
+            var missing = new List<string>();
+            foreach (var pair in plan.OutputSnapshots)
+                if (!runtime.CanRestoreOutput(pair.Key, pair.Value))
+                    missing.Add("Restore runtime missing original output " + pair.Key);
+
+            if (!runtime.CanRestoreGlobalAudio(
+                    plan.PlayingAudioData, plan.PlayingMetronome!.Value))
+                missing.Add("Restore runtime missing global audio/metronome playback.");
+
+            if (missing.Count != 0)
+                return new(FreeShowRestoreStatus.Refused, 0, missing.AsReadOnly());
+
+            int restoredCount = 0;
+            try
+            {
+                foreach (var pair in plan.OutputSnapshots)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await runtime.RestoreOutputAsync(pair.Key, pair.Value, cancellationToken);
+                    states[pair.Key].ReplaceAfterAcknowledgement(pair.Value);
+                    restoredCount++;
+                }
+
+                // FreeShow restores playingAudioData / playingMetronome after
+                // restoring the selected output OutData. Keep cached data if
+                // the audio backend fails, because a retry may be necessary.
+                await runtime.RestoreGlobalAudioAsync(
+                    plan.PlayingAudioData, plan.PlayingMetronome!.Value, cancellationToken);
+                cache.Clear();
+                return new(FreeShowRestoreStatus.Completed, restoredCount,
+                    Array.Empty<string>());
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return new(restoredCount > 0
+                        ? FreeShowRestoreStatus.PartialExecution
+                        : FreeShowRestoreStatus.Failed,
+                    restoredCount, ["Restore backend failed: " + ex.Message +
+                        " (physical output state requires reconciliation)"]);
+            }
+        }
+        finally { executeGate.Release(); }
+    }
+
+    /// <summary>
+    /// Synchronize a source-complete, externally acknowledged original
+    /// OutData snapshot. This is not callable from the developer OperatorProbe,
+    /// and never controls a real output or writes source data. Reject stale
+    /// revisions rather than overwriting concurrent user changes.
+    /// </summary>
+    public async Task<bool> SynchronizeAcknowledgedOutputAsync(
+        string outputId, JsonElement originalOutData, long expectedRevision,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputId);
+        await executeGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!states.TryGetValue(outputId, out var state) ||
+                state.Revision != expectedRevision ||
+                originalOutData.ValueKind != JsonValueKind.Object)
+                return false;
+            state.ReplaceAfterAcknowledgement(originalOutData);
+            return true;
+        }
+        finally { executeGate.Release(); }
+    }
+
+
+    /// <summary>
     /// The original Preview must reflect acknowledged native output changes,
     /// not stale SETTINGS JSON. A successful command updates this model only
     /// after its complete registered runtime reports success.
