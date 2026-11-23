@@ -48,6 +48,7 @@ public static class FreeShowOutputCommandPlanner
                 // clearBackground() clears the active out.background; the
                 // independent output style background remains in place.
                 effects.Add(FreeShowSourceEffect.ClearActiveBackground);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 effects.Add(FreeShowSourceEffect.ClearBackgroundCredits);
                 effects.Add(FreeShowSourceEffect.NotifyBackgroundCleared);
                 effects.Add(FreeShowSourceEffect.RecordTimelineClearBackground);
@@ -62,6 +63,7 @@ public static class FreeShowOutputCommandPlanner
                     : FreeShowSourceEffect.CaptureLastSlidePositionIfEligible);
                 effects.Add(FreeShowSourceEffect.CancelNextSlideTimers);
                 effects.Add(FreeShowSourceEffect.ClearSlideOutput);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 effects.Add(FreeShowSourceEffect.NotifySlideCleared);
                 effects.Add(FreeShowSourceEffect.RecordTimelineClearSlide);
                 break;
@@ -81,7 +83,9 @@ public static class FreeShowOutputCommandPlanner
                         lockedOverlayIds.Add(id);
                 }
                 effects.Add(FreeShowSourceEffect.ClearUnlockedOverlaysKeepingLocked);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 effects.Add(FreeShowSourceEffect.ClearEffects);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 effects.Add(FreeShowSourceEffect.RecordTimelineClearOverlays);
                 break;
 
@@ -90,10 +94,12 @@ public static class FreeShowOutputCommandPlanner
                 // unlike the Preview ClearButtons.svelte clearOverlays()
                 // function that preserves locked overlay IDs.
                 effects.Add(FreeShowSourceEffect.ClearAllOverlays);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 break;
 
             case NativeShortcutCommand.ClearEffects:
                 effects.Add(FreeShowSourceEffect.ClearEffects);
+                effects.Add(FreeShowSourceEffect.PropagateOutputChanged);
                 effects.Add(FreeShowSourceEffect.RecordTimelineClearOverlays);
                 break;
 
@@ -130,12 +136,18 @@ public static class FreeShowOutputCommandPlanner
 }
 
 /// <summary>
-/// Each original FreeShow side effect is explicitly enumerated; if a runtime
+/// The major original FreeShow side effects are explicitly enumerated; each
+/// effect adapter must also cover that operation's underlying setOutput
+/// lifecycle (overlay timers, locked-overlay persistence, playback control)
+/// before declaring support. If any capability is missing, reject the plan.
+/// A later visual parity pass must still verify the complete source behavior.
+/// 
 /// cannot perform even one, the entire command is rejected before execution.
 /// </summary>
 public enum FreeShowSourceEffect
 {
     ClearActiveBackground,
+    PropagateOutputChanged,
     ClearBackgroundCredits,
     NotifyBackgroundCleared,
     RecordTimelineClearBackground,
