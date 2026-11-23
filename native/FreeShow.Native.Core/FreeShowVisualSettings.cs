@@ -11,17 +11,22 @@ public sealed class FreeShowVisualSettings
 {
     public JsonElement SyncedSettings { get; }
     public JsonElement Templates { get; }
+    public JsonElement Overlays { get; }
     public JsonElement Styles => ShowDocument.Property(SyncedSettings, "styles");
     public bool HasSettingsFile { get; }
     public bool HasTemplatesFile { get; }
+    public bool HasOverlaysFile { get; }
 
     private FreeShowVisualSettings(JsonElement syncedSettings, JsonElement templates,
-        bool hasSettingsFile, bool hasTemplatesFile)
+        JsonElement overlays, bool hasSettingsFile, bool hasTemplatesFile,
+        bool hasOverlaysFile)
     {
         SyncedSettings = syncedSettings;
         Templates = templates;
+        Overlays = overlays;
         HasSettingsFile = hasSettingsFile;
         HasTemplatesFile = hasTemplatesFile;
+        HasOverlaysFile = hasOverlaysFile;
     }
 
     public static async Task<FreeShowVisualSettings> OpenAsync(string freeShowDataRoot,
@@ -30,9 +35,12 @@ public sealed class FreeShowVisualSettings
         var folder = Path.Combine(freeShowDataRoot, "Config");
         var settingsPath = Path.Combine(folder, "settings_synced.json");
         var templatesPath = Path.Combine(folder, "templates.json");
+        var overlaysPath = Path.Combine(folder, "overlays.json");
         var styles = await ReadObjectAsync(settingsPath, cancellationToken);
         var templates = await ReadObjectAsync(templatesPath, cancellationToken);
-        return new(styles, templates, File.Exists(settingsPath), File.Exists(templatesPath));
+        var overlays = await ReadObjectAsync(overlaysPath, cancellationToken);
+        return new(styles, templates, overlays, File.Exists(settingsPath),
+            File.Exists(templatesPath), File.Exists(overlaysPath));
     }
 
     private static async Task<JsonElement> ReadObjectAsync(string path,
@@ -52,6 +60,8 @@ public sealed class FreeShowVisualSettings
 
     public JsonElement GetStyle(string styleId) => ShowDocument.Property(Styles, styleId);
     public JsonElement GetTemplate(string templateId) => ShowDocument.Property(Templates, templateId);
+    public bool IsOverlayLocked(string overlayId) =>
+        ShowDocument.IsTrue(ShowDocument.Property(Overlays, overlayId), "locked");
 
     /// <summary>
     /// Same ID selection priority as getStyleTemplate() in the original output.ts:
