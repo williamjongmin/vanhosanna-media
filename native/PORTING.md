@@ -94,6 +94,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.25 Prepared lyric application and acknowledgment:** implemented a single-command source/Native integration adapter with an actual Avalonia prepared-visual surface, exact selected-control receipt, and full-state recapture after effects. Ported the source slide assignment/refresh/project-index data step and fixed acknowledgment accepting stale reveal fields omitted by the next cue. Source effect handlers still require a complete backend; none is installed in OperatorProbe. Synthetic regressions are authored, not executed. See `SLIDE-PRESENTATION-STATUS.md`. No build, runtime or physical latency validation performed.
 
+- **0.0.26 Native timer scheduler:** implemented actual .NET slide/overlay/effect countdown handles, original startup/pause/resume/slider control behavior, owner-loop dispatch, stale-callback invalidation and exact registration cleanup. Existing F2 and Clear All timer hooks can now operate on this isolated scheduler's real inventory. Source elapsed actions and live operator integration remain uninstalled. Deterministic clock/event-loop fixtures are authored but not run. See `TIMER-SCHEDULER-STATUS.md`.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.

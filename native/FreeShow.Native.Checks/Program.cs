@@ -1956,6 +1956,7 @@ using (var navShowJson = JsonDocument.Parse("""
 }
 
 await SlideTransitionRuntimeChecks.RunAsync();
+await NativeTimerSchedulerChecks.RunAsync();
 
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 

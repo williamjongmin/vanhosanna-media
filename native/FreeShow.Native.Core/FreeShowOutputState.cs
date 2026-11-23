@@ -98,7 +98,9 @@ public sealed class FreeShowOutputState
 
     /// <summary>
     /// Source clearTimers() clears the output transition state separately
-    /// from the actual runtime timers. Those runtime timers are not ported.
+    /// from the actual runtime timers. A source backend must also cancel
+    /// the owned scheduler handles; clearing this JSON field alone is not
+    /// a complete timer cancellation.
     /// </summary>
     public void ClearTransition()
     {

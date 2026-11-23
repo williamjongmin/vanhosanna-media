@@ -1,5 +1,7 @@
 # Native Port 0.0.25 — prepared lyric application and source acknowledgment
 
+Follow-up: [0.0.26 native timer scheduler](TIMER-SCHEDULER-STATUS.md) supplies concrete timer handles and controls for the source backend's timer phases. The source action engine and live output registration are still incomplete.
+
 ## Implemented
 
 - `FreeShowSlideOutputMutation.Prepare` ports the **data assignment subset** of `src/frontend/components/helpers/output.ts:setOutput("slide", ...)`: replace the old slide instead of merging reveal fields, carry the matching active project occurrence, remove resolved bindings, increment `refresh` for the same non-temporary slide/line, and retain all unrelated/unknown OutData. It only returns a clone. Malformed non-numeric refresh is refused rather than approximating JavaScript coercion.

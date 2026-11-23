@@ -1,5 +1,7 @@
 # Native Port 0.0.18 — FreeShow timer and persistent media bridge
 
+Follow-up: [0.0.26 native timer scheduler](TIMER-SCHEDULER-STATUS.md) implements concrete timers and source timer-control logic against this registry/effect bridge. It is not installed in OperatorProbe; full elapsed-action/output integration remains incomplete. The limitations below describe the original 0.0.18 checkpoint.
+
 ## Goal and source of truth
 Retain the existing FreeShow output behavior and UI. A lyric cue must not restart a persistent video decoder. F2 cancels next-slide timers only; F1 removes active out.background but must not remove the independent style background. These bridge components are a conservative **subset**, not complete output parity.
 

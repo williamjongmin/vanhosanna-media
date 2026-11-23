@@ -54,6 +54,35 @@ public sealed class FreeShowOutputTimerRegistry
     }
 
     /// <summary>
+    /// A scheduler removes its exact completed/replaced handle before
+    /// dispatching the elapsed action. A late callback cannot remove a new
+    /// timer registered under the same original output/overlay ID.
+    /// </summary>
+    public bool UnregisterSlide(string outputId, IFreeShowTimerCancellation expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        lock (gate)
+        {
+            if (!slideTimers.TryGetValue(outputId, out var current) ||
+                !ReferenceEquals(current, expected)) return false;
+            return slideTimers.Remove(outputId);
+        }
+    }
+
+    public bool UnregisterOverlay(string outputId, string overlayId,
+        IFreeShowTimerCancellation expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        lock (gate)
+        {
+            string key = Key(outputId, overlayId);
+            if (!overlayTimers.TryGetValue(key, out var current) ||
+                !ReferenceEquals(current, expected)) return false;
+            return overlayTimers.Remove(key);
+        }
+    }
+
+    /// <summary>
     /// Failed cancellations remain registered. New timers registered
     /// concurrently with cancellation cannot be accidentally removed; only
     /// the exact handle that acknowledged cancellation is removed.
