@@ -34,11 +34,13 @@ public sealed class FreeShowPreviewRegion : UserControl
         ShowDocument? currentShow = null,
         JsonElement originalOverlayDefinitions = default,
         FreeShowAuxiliaryPreviewState? runtime = null,
-        FreeShowOutputCommandCoordinator? outputController = null)
+        FreeShowOutputCommandCoordinator? outputController = null,
+        FreeShowVisualSettings? originalStyles = null)
     {
         settings = source ?? throw new ArgumentNullException(nameof(source));
         coordinator = outputController;
-        multiOutputs = new FreeShowMultiOutputPreview(settings, currentShow);
+        multiOutputs = new FreeShowMultiOutputPreview(
+            settings, currentShow, originalStyles, outputController?.States);
         clears = new FreeShowClearButtons(coordinator?.CurrentPreview(runtime) ??
             FreeShowPreviewControlState.Prepare(settings, originalOverlayDefinitions, runtime));
         if (coordinator != null)
