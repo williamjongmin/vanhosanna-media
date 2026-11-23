@@ -1748,6 +1748,17 @@ using (var navShowJson = JsonDocument.Parse("""
               incompleteTransition.Executed.Count == 0,
             "Missing updateOut source phase blocks even a cached lyric-only transition");
 
+        var noPreparedVisual = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases)
+        { VisualPrepared = false };
+        var visualUnavailable = await transitionController.DispatchSlideTransitionAsync(
+            transitionPlan, new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = noPreparedVisual });
+        Check(visualUnavailable.Status == FreeShowSlideTransitionStatus.Refused &&
+              noPreparedVisual.Executed.Count == 0 &&
+              transitionController.States["screen2"].Revision == 0,
+            "Original slide output cannot begin when the exact Native lyric frame was not prewarmed");
+
         var wrongAcknowledgementController = new FreeShowOutputCommandCoordinator(config);
         var wrongAcknowledgement = new RecordingCompleteSlideTransitionRuntime(
             "screen2", FreeShowSlideTransitionOrder.Phases)
@@ -2107,6 +2118,7 @@ internal sealed class RecordingCompleteSlideTransitionRuntime :
     public FreeShowSlideTransitionPhase? FailAtPhase { get; set; }
     public FreeShowSlideTransitionPhase? CancelAtPhase { get; set; }
     public bool ReturnWrongSlide { get; set; }
+    public bool VisualPrepared { get; set; } = true;
     public List<FreeShowSlideTransitionPhase> Executed { get; } = new();
 
     public RecordingCompleteSlideTransitionRuntime(string outputId,
@@ -2115,6 +2127,10 @@ internal sealed class RecordingCompleteSlideTransitionRuntime :
         OutputId = outputId;
         supported = new HashSet<FreeShowSlideTransitionPhase>(phases);
     }
+
+    public bool HasPreparedSourceVisual(
+        FreeShowSlideTransitionTarget target) =>
+        target.OutputId == OutputId && VisualPrepared;
 
     public bool SupportsCompletePhase(
         FreeShowSlideTransitionPhase phase,
