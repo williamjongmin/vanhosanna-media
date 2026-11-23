@@ -1616,6 +1616,16 @@ using (var navShowJson = JsonDocument.Parse("""
             "Original getFewestOutputLines chooses minimum over active output styles");
 
         var state = config.All.ToDictionary(x => x.Id, x => new FreeShowOutputState(x));
+        var revealStyle = FreeShowRevealStyleResolver.Resolve(
+            "screen2", config, styles, state);
+        Check(revealStyle.CanPrepare &&
+              revealStyle.Context?.StyleLines == 1 &&
+              revealStyle.Context.FewestActiveStyleLines == 1 &&
+              revealStyle.Context.HighestActiveLinePosition == 0,
+            "Source Output.svelte reveal window uses the selected output style and shared active output line progress");
+        Check(!FreeShowRevealStyleResolver.Resolve(
+            "unregistered-output", config, styles, state).CanPrepare,
+            "Unknown FreeShow physical output is not assigned a fabricated text style");
         var batch = FreeShowMultiOutputAdvanceInspection.Prepare(
             config, state, context,
             id => id == source.ShowId ? source : null,
