@@ -18,6 +18,7 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
     public NativePersistentVideoOutput Visual { get; }
     public IReadOnlyList<NativeVideoCue> VideoCues => videoCues;
     public int CurrentCue { get; private set; } = -1;
+    public int LastClearedCue { get; private set; } = -1;
 
     public NativeFreeShowOutputSession(
         string outputId, ShowDocument source,
@@ -52,8 +53,27 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
         if (disposed) return false;
         // This exact code path does not open/reseek/restart a media file.
         var shown = Visual.ShowCue(index);
-        if (shown) CurrentCue = index;
+        if (shown)
+        {
+            CurrentCue = index;
+            LastClearedCue = -1;
+        }
         return shown;
+    }
+
+    /// <summary>
+    /// FreeShow F2 clears only slide output. The first press remembers the
+    /// previous slide index; the double press clears that navigation cache.
+    /// It must never reset or dispose the native background video player.
+    /// </summary>
+    public void ClearSlide(bool clearCachedSlidePosition = false)
+    {
+        if (disposed) throw new ObjectDisposedException(nameof(NativeFreeShowOutputSession));
+        if (!clearCachedSlidePosition && CurrentCue >= 0)
+            LastClearedCue = CurrentCue;
+        if (clearCachedSlidePosition) LastClearedCue = -1;
+        Visual.ClearLyrics();
+        CurrentCue = -1;
     }
 
     /// <summary>
