@@ -51,6 +51,39 @@ public static class NativeFreeShowSourceEffectComposer
         // All remaining callbacks are genuinely unimplemented and thus
         // not advertised as supported. The coordinator refuses partial
         // action plans instead of silently performing only one subeffect.
-        return new NativeFreeShowSessionCommandRuntime(session, hooks);
+        bool ReadyForPlan(
+            FreeShowSourceEffect effect, FreeShowOutputCommandPlan plan)
+        {
+            if (plan.OutputId != session.OutputId) return false;
+            switch (effect)
+            {
+                case FreeShowSourceEffect.CancelNextSlideTimers:
+                    return timers.CanCancel([session.OutputId], includeOverlayTimers: false);
+
+                case FreeShowSourceEffect.ClearActiveBackground:
+                    return NativeFreeShowMediaSourceEffects.CanClearBackground(
+                        session, coordinator, freeShowDataRoot, plan);
+
+                case FreeShowSourceEffect.CaptureLastSlidePositionIfEligible:
+                    if (!coordinator.States.TryGetValue(plan.OutputId, out var source))
+                        return false;
+                    var active = ShowDocument.Property(source.Snapshot(), "slide");
+                    var showId = ShowDocument.String(active, "id");
+                    if (showId.Length == 0) return true;
+                    try
+                    {
+                        // A missing original source Show must refuse F2 before
+                        // canceling timers or changing any physical layer.
+                        return originalShowLookup(showId)?.ShowId == showId;
+                    }
+                    catch { return false; }
+
+                default:
+                    return true; // Static SupportsSourceEffect must also pass.
+            }
+        }
+
+        return new NativeFreeShowSessionCommandRuntime(
+            session, hooks, ReadyForPlan);
     }
 }
