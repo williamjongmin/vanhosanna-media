@@ -441,6 +441,78 @@ Check(fallbackLayout.LeftPanelWidth == 290 && fallbackLayout.RightPanelWidth == 
     && fallbackLayout.DrawerHeight == 300 && fallbackLayout.Page == "show",
     "Original workspace dimensions and initial show page fallbacks");
 
+// Original Config/projects.json contains independent projects and folders.
+// Use a synthetic file only; nothing here touches a real church project.
+using (var projectJson = JsonDocument.Parse("""
+{
+ "projects": {
+  "song-project": {"name":"Sunday Worship","parent":"folder-worship","created":1,
+    "shows":[{"id":"original-show-id","type":"show","layout":"main"}]},
+  "archived": {"name":"Last Month","parent":"/","created":1,"archived":true,
+    "shows":[{"id":"archived-song","type":"show"}]},
+  "root": {"name":"Bible Study","parent":"/","created":2,"shows":[]},
+  "orphan": {"name":"Orphan","parent":"missing-folder","created":3,"shows":[]},
+  "deleted": {"name":"Removed","deleted":true,"parent":"/","created":4,"shows":[]}
+ },
+ "folders":{
+  "folder-worship":{"name":"Worship","parent":"/"},
+  "folder-nested":{"name":"Setlists","parent":"folder-worship"},
+  "folder-deleted":{"name":"Deleted","parent":"/","deleted":true}
+ },
+ "projectTemplates":{"futureTemplate":{"name":"Original preserved"}},
+ "unknownConfig":{"preserve":true}
+}
+"""))
+{
+    var lib = FreeShowProjectLibrary.Parse(projectJson.RootElement);
+    Check(lib.Tree.Count == 6 && lib.Find("deleted") == null,
+        "Original project library filters deleted entries without modifying JSON");
+    Check(lib.Find("song-project")?.ParentId == "folder-worship" &&
+          lib.Find("song-project")?.Shows[0].ShowId == "original-show-id",
+        "Original project folder relation and show ID preserved");
+    Check(lib.Find("song-project")?.Shows[0].LayoutId == "main",
+        "Original per-project arrangement override preserved");
+    Check(lib.Find("folder-nested")?.Depth == 1,
+        "Project nesting depth follows original folder IDs");
+    Check(lib.Find("orphan")?.ParentId == "/" &&
+          lib.Warnings.Any(w => w.Contains("Missing parent")),
+        "Missing folder reference displayed at root with warning");
+    Check(lib.Tree.ToList().FindIndex(x => x.Id == "root") <
+          lib.Tree.ToList().FindIndex(x => x.Id == "archived"),
+        "Archived projects remain after normal projects");
+    Check(ShowDocument.Property(lib.Raw, "projectTemplates").ValueKind == JsonValueKind.Object &&
+          ShowDocument.Property(lib.Raw, "unknownConfig").ValueKind == JsonValueKind.Object,
+        "Original project templates and unknown store fields preserved");
+}
+
+using (var previewJson = JsonDocument.Parse("""
+{"outputs":{
+ "outputB":{"name":"B","enabled":true,"active":true,
+  "bounds":{"width":1920,"height":1080},"out":{"slide":{"id":"other-song","layout":"main","index":0}}},
+ "outputA":{"name":"A","enabled":true,"active":true,
+  "bounds":{"width":1920,"height":1080},
+  "out":{"slide":{"id":"original-show-id","layout":"main","index":1}}},
+ "stage":{"name":"Confidence","enabled":true,"active":true,"stageOutput":"outputA",
+  "bounds":{"width":1920,"height":1080},"out":{"slide":{"id":"original-show-id","index":0}}},
+ "hidden":{"name":"Hidden","enabled":true,"active":true,"hideFromPreview":true,
+  "bounds":{"width":1920,"height":1080},"out":{"slide":{"id":"original-show-id","index":0}}}
+}}
+"""))
+{
+    var configuration = FreeShowOutputConfiguration.Parse(previewJson.RootElement);
+    var projected = FreeShowOutputPreviewProjection.Prepare(configuration, show);
+    Check(projected.Count == 3 && projected.All(x => x.Output.Id != "hidden"),
+        "Original MultiOutputs hides configured hideFromPreview output");
+    Check(projected[0].Output.Id == "outputA" && projected[^1].Output.Id == "stage",
+        "Normal outputs ordered before stage confidence view");
+    Check(projected[0].SourceFrame?.SlideId == "verse-child",
+        "Real output OutData index resolves source child-slide frame");
+    Check(projected[1].SourceFrame == null && projected[1].Omission != null,
+        "Different live show never falsely previews selected song");
+    Check(projected[2].SourceFrame == null && projected[2].Omission != null,
+        "Unported Stage compositor never falsely rendered as a normal lyric output");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
