@@ -28,6 +28,11 @@ public sealed class FreeShowClearButtons : UserControl
     private IFreeShowOutputRestoreRuntime? restoreRuntime;
     private DateTimeOffset restoreSavedAt;
     private Func<DateTimeOffset> currentTime = () => DateTimeOffset.UtcNow;
+    private FreeShowOutputSlidePositionCache? clearAllSlideCache;
+    private IFreeShowClearAllRuntime? clearAllRuntime;
+    private Func<FreeShowClearAllContext>? clearAllContext;
+    private Func<string, ShowDocument?>? clearAllShowLookup;
+    private Func<FreeShowAuxiliaryPreviewState?>? currentPlaybackState;
     private string locale = "en";
     private static readonly IReadOnlyDictionary<string, string> EnglishLabels =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -51,6 +56,7 @@ public sealed class FreeShowClearButtons : UserControl
     public event EventHandler<FreeShowPreviewCategoryEventArgs>? CategorySelected;
     public event EventHandler<FreeShowClearCommandCompletedEventArgs>? ClearCommandCompleted;
     public event EventHandler<FreeShowRestoreCompletedEventArgs>? RestoreCompleted;
+    public event EventHandler<FreeShowClearAllCompletedEventArgs>? ClearAllCompleted;
     public string? SelectedCategory => navigation.SelectedCategory;
 
     public FreeShowClearButtons(FreeShowPreviewSnapshot source)
@@ -128,6 +134,31 @@ public sealed class FreeShowClearButtons : UserControl
         Rebuild();
     }
 
+    /// <summary>
+    /// The original "Clear all" button calls clearAll(true). This native
+    /// binding is explicit and still requires the complete original backend
+    /// for timeline, background, slide/timers, overlays and global audio.
+    /// The internal read-only OperatorProbe never installs one.
+    /// </summary>
+    public void BindSourceCompleteClearAll(
+        FreeShowOutputCommandCoordinator coordinator,
+        FreeShowOutputRestoreCache cache,
+        FreeShowOutputSlidePositionCache slideCache,
+        IFreeShowClearAllRuntime completeRuntime,
+        Func<FreeShowClearAllContext> sourceContext,
+        Func<string, ShowDocument?>? showLookup = null,
+        Func<FreeShowAuxiliaryPreviewState?>? playbackState = null)
+    {
+        guardedCoordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        restoreCache = cache ?? throw new ArgumentNullException(nameof(cache));
+        clearAllSlideCache = slideCache ?? throw new ArgumentNullException(nameof(slideCache));
+        clearAllRuntime = completeRuntime ?? throw new ArgumentNullException(nameof(completeRuntime));
+        clearAllContext = sourceContext ?? throw new ArgumentNullException(nameof(sourceContext));
+        clearAllShowLookup = showLookup;
+        currentPlaybackState = playbackState;
+        Rebuild();
+    }
+
     public void RemoveSourceActions()
     {
         guardedCoordinator = null;
@@ -150,8 +181,7 @@ public sealed class FreeShowClearButtons : UserControl
 
         bool showRestore = restoreCache?.HasSnapshot == true &&
             state.Control("all").Presence == PreviewLayerPresence.Cleared;
-        root.Children.Add(showRestore ? MakeRestoreRow() :
-            MakeRow("all", expanded: false, fullWidth: true));
+        root.Children.Add(showRestore ? MakeRestoreRow() : MakeClearAllRow());
 
         var activeGroup = new WrapPanel
         {
@@ -162,6 +192,78 @@ public sealed class FreeShowClearButtons : UserControl
             activeGroup.Children.Add(MakeRow(id, expanded: true));
         }
         root.Children.Add(activeGroup);
+    }
+
+    private Control MakeClearAllRow()
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        row.Children.Add(FreeShowOriginalIconGeometry.Create("clear", Brushes.White, 20));
+        row.Children.Add(new TextBlock
+        {
+            Text = Label("all"),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 12
+        });
+
+        var context = clearAllContext?.Invoke();
+        var plan = guardedCoordinator != null && context != null
+            ? guardedCoordinator.PlanClearAll(
+                context with { FromButton = true }, clearAllShowLookup != null)
+            : null;
+        bool ready = !commandRunning && state.Control("all").Presence ==
+                PreviewLayerPresence.Active &&
+            plan != null && clearAllRuntime != null &&
+            guardedCoordinator!.CheckClearAllReadiness(plan, clearAllRuntime).Count == 0;
+
+        var button = new Button
+        {
+            Content = row,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Height = 36,
+            Padding = new Thickness(10, 5),
+            IsEnabled = ready
+        };
+        ToolTip.SetTip(button, Label("all") +
+            (ready ? "" : " — source-complete Clear All backend unavailable"));
+
+        button.Click += async (_, _) =>
+        {
+            if (commandRunning || !button.IsEnabled || guardedCoordinator == null ||
+                restoreCache == null || clearAllSlideCache == null ||
+                clearAllRuntime == null || clearAllContext == null)
+                return;
+
+            commandRunning = true;
+            button.IsEnabled = false;
+            try
+            {
+                var source = clearAllContext() with { FromButton = true };
+                var result = await guardedCoordinator.ClearAllAsync(
+                    source, restoreCache, clearAllSlideCache,
+                    clearAllRuntime, clearAllShowLookup);
+                if (restoreCache.HasSnapshot)
+                    restoreSavedAt = currentTime();
+                state = guardedCoordinator.CurrentPreview(currentPlaybackState?.Invoke());
+                navigation.Update(state);
+                ClearAllCompleted?.Invoke(this,
+                    new FreeShowClearAllCompletedEventArgs(result));
+            }
+            catch (Exception exception)
+            {
+                ClearAllCompleted?.Invoke(this,
+                    new FreeShowClearAllCompletedEventArgs(new FreeShowClearAllResult(
+                        FreeShowClearAllStatus.Failed, 0,
+                        [exception.GetType().Name + ": " + exception.Message])));
+            }
+            finally { commandRunning = false; Rebuild(); }
+        };
+        return button;
     }
 
     private Control MakeRestoreRow()
@@ -380,4 +482,11 @@ public sealed class FreeShowRestoreCompletedEventArgs : EventArgs
     public FreeShowRestoreCompletedEventArgs(FreeShowRestoreResult result)
         => Result = result;
     public FreeShowRestoreResult Result { get; }
+}
+
+public sealed class FreeShowClearAllCompletedEventArgs : EventArgs
+{
+    public FreeShowClearAllCompletedEventArgs(FreeShowClearAllResult result)
+        => Result = result;
+    public FreeShowClearAllResult Result { get; }
 }
