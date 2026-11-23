@@ -11,10 +11,13 @@ namespace FreeShow.Native.Rendering;
 public sealed class NativeFreeShowOutputSession : IAsyncDisposable
 {
     private readonly IReadOnlyList<NativeVideoCue> videoCues;
+    private readonly IReadOnlyList<NativeFramePlan> preparedFrames;
     private readonly string dataRoot;
     private bool disposed;
 
     public string OutputId { get; }
+    public string PreparedShowId { get; }
+    public string PreparedLayoutId { get; }
     public NativePersistentVideoOutput Visual { get; }
     public IReadOnlyList<NativeVideoCue> VideoCues => videoCues;
     public int CurrentCue { get; private set; } = -1;
@@ -77,8 +80,11 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
             throw new InvalidOperationException("Output session construction belongs to UI thread.");
 
         OutputId = outputId;
+        PreparedShowId = source.ShowId;
+        PreparedLayoutId = source.ActiveLayoutId;
         dataRoot = freeShowDataRoot;
         var frames = FreeShowStyledRenderPlanner.Prepare(source, settings, outputStyleId);
+        preparedFrames = frames;
         var plans = FreeShowOutputLayerPlanner.Prepare(
             source, settings, outputStyleId, existingOutputBackgroundId);
         if (frames.Count != plans.Count)
@@ -88,6 +94,42 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
             plans, mediaResolver ?? (id => FreeShowMediaLookup.Resolve(source, id)));
         Visual = new NativePersistentVideoOutput();
         Visual.Prepare(frames, plans);
+    }
+
+    /// <summary>
+    /// Safely convert original FreeShow OutSlide.layout/index into the
+    /// preprepared native cue ordinal. Original source indexes are NOT equal
+    /// to native ordinal after filtering disabled slides. This method
+    /// does not show any slide, execute an action, or control media.
+    /// The full source output lifecycle is still necessary to go live.
+    /// </summary>
+    public NativeSourceCueLookup InspectPreparedNavigation(
+        FreeShowSlideAdvanceResult navigation)
+    {
+        ArgumentNullException.ThrowIfNull(navigation);
+        if (disposed)
+            return new(null, "Native output session is already disposed.");
+        if (!navigation.HasTarget || navigation.LayoutIndex == null ||
+            navigation.Kind == FreeShowSlideAdvanceKind.RevealWithinSlide)
+            return new(null, "Original reveal or project navigation requires source compositor.");
+        if (navigation.ShowId != PreparedShowId ||
+            navigation.LayoutId != PreparedLayoutId)
+            return new(null, "Native session is prepared for a different original Show/layout.");
+
+        for (int index = 0; index < preparedFrames.Count; index++)
+        {
+            var frame = preparedFrames[index];
+            if (frame.Source.LayoutIndex != navigation.LayoutIndex) continue;
+            if (videoCues[index].LayoutIndex != navigation.LayoutIndex)
+                return new(null, "Original renderer/video cue indices do not match.");
+            if (!frame.CanRenderWithoutKnownOmissions ||
+                videoCues[index].Unsupported.Count != 0 ||
+                navigation.RequiresUnportedSourceEffects)
+                return new(null, "Original slide includes unported media/reveal/actions or CSS.");
+            return new(index, null);
+        }
+        return new(null,
+            "Original source slide is disabled, missing or not prepared in this native output.");
     }
 
     public bool ShowCue(int index)
@@ -154,4 +196,10 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
         disposed = true;
         await Visual.DisposeAsync();
     }
+}
+
+public sealed record NativeSourceCueLookup(int? NativeCueOrdinal, string? Refusal)
+{
+    public bool CanPreviewNativeFrame => NativeCueOrdinal.HasValue && Refusal == null;
+    public bool CanDispatchLive => false;
 }
