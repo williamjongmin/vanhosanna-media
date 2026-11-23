@@ -48,6 +48,8 @@ internal static class Program
             if (dataRoot != null)
             {
                 OperatorProbeApp.ReadOnlyCatalog = new FreeShowReadOnlyShowCatalog(dataRoot);
+                OperatorProbeApp.VisualSettings =
+                    FreeShowVisualSettings.OpenAsync(dataRoot).GetAwaiter().GetResult();
                 OperatorProbeApp.Projects =
                     FreeShowProjectLibrary.OpenAsync(dataRoot)
                         .GetAwaiter().GetResult();
@@ -79,6 +81,7 @@ public sealed class OperatorProbeApp : Application
     internal static FreeShowOutputConfiguration? LocalOutputSettings { get; set; }
     internal static FreeShowProjectLibrary? Projects { get; set; }
     internal static FreeShowReadOnlyShowCatalog? ReadOnlyCatalog { get; set; }
+    internal static FreeShowVisualSettings? VisualSettings { get; set; }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -107,14 +110,16 @@ public sealed class OperatorProbeApp : Application
                     new FreeShowPageRegions(projectsRegion, center, null));
                 if (LocalOutputSettings != null)
                     workspace.RightPreviewHost.Content =
-                        new FreeShowPreviewRegion(LocalOutputSettings, selected);
+                        new FreeShowPreviewRegion(LocalOutputSettings, selected,
+                        VisualSettings?.Overlays ?? default);
             }
 
             workspace.RegisterPageRegions("show",
                 new FreeShowPageRegions(projectsRegion, originalShow, null));
             if (LocalOutputSettings != null)
                 workspace.RightPreviewHost.Content =
-                    new FreeShowPreviewRegion(LocalOutputSettings, Source);
+                    new FreeShowPreviewRegion(LocalOutputSettings, Source,
+                    VisualSettings?.Overlays ?? default);
 
             int selectionVersion = 0;
             CancellationTokenSource? selectionCancellation = null;
