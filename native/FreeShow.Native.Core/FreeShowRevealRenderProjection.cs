@@ -91,7 +91,9 @@ public static class FreeShowRevealRenderProjection
             start = Math.Max(0, first);
             end = start + style.StyleLines;
         }
-        if (hasLineReveal)
+        // Original output.ts returns early when there are no source
+        // text lines; it does not fabricate a reveal range from metadata.
+        if (hasLineReveal && maxLines > 0)
         {
             revealStart = style.StyleLines > 0
                 ? Math.Max(0, reveal.Value - style.StyleLines)
