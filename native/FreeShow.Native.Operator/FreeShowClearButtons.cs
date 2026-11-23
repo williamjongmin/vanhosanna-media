@@ -225,8 +225,8 @@ public sealed class FreeShowClearButtons : UserControl
             ? guardedCoordinator.PlanClearAll(
                 context with { FromButton = true }, clearAllShowLookup != null)
             : null;
-        bool ready = !commandRunning && state.Control("all").Presence ==
-                PreviewLayerPresence.Active &&
+        bool ready = !commandRunning && restoreCache?.HasSnapshot != true &&
+            state.Control("all").Presence == PreviewLayerPresence.Active &&
             plan != null && clearAllRuntime != null &&
             guardedCoordinator!.CheckClearAllReadiness(plan, clearAllRuntime).Count == 0;
 
