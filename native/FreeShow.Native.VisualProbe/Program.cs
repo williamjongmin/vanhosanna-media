@@ -34,6 +34,9 @@ internal static class Program
             {
                 var dataRoot = args[2];
                 var settings = FreeShowVisualSettings.OpenAsync(dataRoot).GetAwaiter().GetResult();
+                // Apply original FreeShow lyric template styles to a temporary
+                // output view, never to the original .show data.
+                ProbeApp.Frames = FreeShowStyledRenderPlanner.Prepare(source, settings, args[4]);
                 ProbeApp.OutputPlans = FreeShowOutputLayerPlanner.Prepare(source, settings, args[4]);
                 ProbeApp.LocalStillImagePath = id => FreeShowMediaLookup.ExistingStillImagePath(
                     FreeShowMediaLookup.Resolve(source, id), dataRoot);
