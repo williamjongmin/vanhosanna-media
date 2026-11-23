@@ -35,7 +35,9 @@ Baseline: church-dev / package version 1.6.8-beta.5. The Electron implementation
 - `FreeShow.Native.Core/SlideProjection.cs`: source-based, non-rendering slide projection. Preserves original JSON, text runs, per-item styles, and child overrides.
 - `FreeShow.Native.Core/ShowLibrary.cs`: read-only inspector for a caller-selected `Shows` folder. Never writes or deletes.
 - `FreeShow.Native.Probe`: command-line source inspector; no UI port yet.
-- `FreeShow.Native.Checks`: synthetic fixture checks for data ordering and losslessness. Fixtures are **not** real church data.
+- `FreeShow.Native.Checks`: synthetic fixture checks for data ordering, losslessness and basic CSS rendering plans. Fixtures are **not** real church data.
+- `FreeShow.Native.Rendering`: early Avalonia native text renderer; original FreeShow-style box geometry and cached controls, with explicit unsupported-feature warnings.
+- `FreeShow.Native.VisualProbe`: **developer-only** comparison viewer, not the ported operator UI; see RENDERER-STATUS.md.
 
 Run locally with .NET 10 SDK:
 ```powershell
