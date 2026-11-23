@@ -22,6 +22,8 @@ public sealed class FreeShowClearButtons : UserControl
     private readonly StackPanel root = new() { Orientation = Orientation.Vertical, Spacing = 0 };
     private readonly Dictionary<string, Action> sourceCompatibleActions = new(StringComparer.Ordinal);
     private bool actualOutputControllerInstalled;
+    private FreeShowOutputCommandCoordinator? guardedCoordinator;
+    private bool commandRunning;
     private string locale = "en";
     private static readonly IReadOnlyDictionary<string, string> EnglishLabels =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -41,6 +43,7 @@ public sealed class FreeShowClearButtons : UserControl
         };
 
     public event EventHandler<FreeShowPreviewCategoryEventArgs>? CategorySelected;
+    public event EventHandler<FreeShowClearCommandCompletedEventArgs>? ClearCommandCompleted;
     public string? SelectedCategory => navigation.SelectedCategory;
 
     public FreeShowClearButtons(FreeShowPreviewSnapshot source)
@@ -73,6 +76,7 @@ public sealed class FreeShowClearButtons : UserControl
     public void InstallCompleteSourceActions(IReadOnlyDictionary<string, Action> actions)
     {
         ArgumentNullException.ThrowIfNull(actions);
+        guardedCoordinator = null;
         sourceCompatibleActions.Clear();
         foreach (var (key, action) in actions)
         {
@@ -82,8 +86,25 @@ public sealed class FreeShowClearButtons : UserControl
         Rebuild();
     }
 
+    /// <summary>
+    /// Attach the source-aware native command coordinator. It uses
+    /// all-effect preflight before any physical operation; an empty or
+    /// incomplete runtime registry keeps the original clear controls
+    /// disabled. The developer OperatorProbe only uses this safe mode.
+    /// </summary>
+    public void BindGuardedCoordinator(FreeShowOutputCommandCoordinator controller)
+    {
+        guardedCoordinator = controller ?? throw new ArgumentNullException(nameof(controller));
+        sourceCompatibleActions.Clear();
+        actualOutputControllerInstalled = false;
+        state = controller.CurrentPreview();
+        navigation.Update(state);
+        Rebuild();
+    }
+
     public void RemoveSourceActions()
     {
+        guardedCoordinator = null;
         sourceCompatibleActions.Clear();
         actualOutputControllerInstalled = false;
         Rebuild();
@@ -139,10 +160,41 @@ public sealed class FreeShowClearButtons : UserControl
         ToolTip.SetTip(button, Label(entry.Id) +
             (entry.KeyboardHint.Length > 0 ? " [" + entry.KeyboardHint + "]" : "") +
             (!button.IsEnabled ? " — controller not installed or output locked" : ""));
-        button.Click += (_, _) =>
+        button.Click += async (_, _) =>
         {
-            if (!CanActuallyClear(entry)) return;
-            sourceCompatibleActions[entry.Id]();
+            if (commandRunning || !CanActuallyClear(entry)) return;
+            if (guardedCoordinator == null)
+            {
+                sourceCompatibleActions[entry.Id]();
+                return;
+            }
+
+            // No fire-and-forget physical commands. Report runtime failures,
+            // and update Preview only from acknowledged native output state.
+            commandRunning = true;
+            button.IsEnabled = false;
+            try
+            {
+                var plans = guardedCoordinator.PlanPreviewClearAction(entry.Id);
+                var result = await guardedCoordinator.DispatchPreparedAsync(plans);
+                state = guardedCoordinator.CurrentPreview();
+                navigation.Update(state);
+                ClearCommandCompleted?.Invoke(this,
+                    new FreeShowClearCommandCompletedEventArgs(entry.Id, result));
+            }
+            catch (Exception exception)
+            {
+                ClearCommandCompleted?.Invoke(this,
+                    new FreeShowClearCommandCompletedEventArgs(entry.Id,
+                        new FreeShowCommandBatchResult(
+                            FreeShowCommandResultStatus.Failed, 0, 0,
+                            [exception.GetType().Name + ": " + exception.Message])));
+            }
+            finally
+            {
+                commandRunning = false;
+                Rebuild();
+            }
         };
         clearButtons[id] = button;
         col.Children.Add(button);
@@ -199,13 +251,33 @@ public sealed class FreeShowClearButtons : UserControl
         (locale == "ko" ? KoreanLabels : EnglishLabels).TryGetValue(category, out var label)
             ? label : category;
 
-    private bool CanActuallyClear(FreeShowPreviewControl entry) =>
-        actualOutputControllerInstalled && !state.OutputLocked &&
-        entry.SourceCanClear && sourceCompatibleActions.ContainsKey(entry.Id);
+    private bool CanActuallyClear(FreeShowPreviewControl entry)
+    {
+        if (commandRunning || state.OutputLocked || !entry.SourceCanClear) return false;
+        if (guardedCoordinator != null)
+        {
+            var plans = guardedCoordinator.PlanPreviewClearAction(entry.Id);
+            return plans.Count > 0 && guardedCoordinator.CheckReadiness(plans).Count == 0;
+        }
+        return actualOutputControllerInstalled &&
+               sourceCompatibleActions.ContainsKey(entry.Id);
+    }
 }
 
 public sealed class FreeShowPreviewCategoryEventArgs : EventArgs
 {
     public FreeShowPreviewCategoryEventArgs(string? category) => Category = category;
     public string? Category { get; }
+}
+
+public sealed class FreeShowClearCommandCompletedEventArgs : EventArgs
+{
+    public FreeShowClearCommandCompletedEventArgs(string category,
+        FreeShowCommandBatchResult result)
+    {
+        Category = category;
+        Result = result;
+    }
+    public string Category { get; }
+    public FreeShowCommandBatchResult Result { get; }
 }
