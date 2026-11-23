@@ -11,6 +11,7 @@ public sealed class FreeShowProjectNavigation
 {
     private readonly FreeShowProjectLibrary library;
     public string? ActiveProjectId { get; private set; }
+    public bool ProjectListViewOpen { get; private set; } = true;
     public FreeShowProjectContentItem? ActiveItem { get; private set; }
 
     public FreeShowProjectNavigation(FreeShowProjectLibrary library) =>
@@ -24,11 +25,14 @@ public sealed class FreeShowProjectNavigation
 
         var content = FreeShowProjectContentProjection.Prepare(project);
         bool sameProject = ActiveProjectId == projectId;
+        ProjectListViewOpen = false;
         if (!sameProject)
         {
             ActiveProjectId = projectId;
-            if (!content.Items.Any(x => x.Id == ActiveItem?.Id))
-                ActiveItem = openFirstItem ? content.FirstSourceItem() : null;
+            // Original openProject preserves an already-active song when it
+            // occurs in the new project's list, but resolves its new index.
+            var matching = content.Items.FirstOrDefault(x => x.Id == ActiveItem?.Id);
+            ActiveItem = matching ?? (openFirstItem ? content.FirstSourceItem() : null);
         }
         return content;
     }
@@ -48,7 +52,8 @@ public sealed class FreeShowProjectNavigation
 
     public void BackToProjects()
     {
-        ActiveProjectId = null;
-        ActiveItem = null;
+        // Projects.svelte back() only sets projectView=true. activeProject
+        // and activeShow remain selected until another explicit selection.
+        ProjectListViewOpen = true;
     }
 }
