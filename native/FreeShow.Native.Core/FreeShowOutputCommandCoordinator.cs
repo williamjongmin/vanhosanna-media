@@ -172,9 +172,8 @@ public sealed class FreeShowOutputCommandCoordinator
         var targetIds = category == "audio"
             ? new[] { "" }
             : configuration.GetActiveNormalOutputs().Select(o => o.Id).ToArray();
-        return targetIds.Select(id => FreeShowOutputCommandPlanner.Prepare(
-            new FreeShowShortcutAction(command.Value, id), configuration, overlays))
-            .ToArray();
+        return targetIds.Select(id => PrepareAgainstCurrent(
+            new FreeShowShortcutAction(command.Value, id))).ToArray();
     }
 
     public IReadOnlyList<FreeShowOutputCommandPlan> PreviewShortcut(NativeShortcutInput input)
@@ -189,9 +188,7 @@ public sealed class FreeShowOutputCommandCoordinator
                 ShowDocument.IsTrue(configuration.RawSettings, "outLocked")
         };
         return shortcuts.Route(guarded, active)
-            .Select(command => FreeShowOutputCommandPlanner.Prepare(
-                command, configuration, overlays))
-            .ToArray();
+            .Select(PrepareAgainstCurrent).ToArray();
     }
 
     public async Task<FreeShowCommandBatchResult> DispatchShortcutAsync(
@@ -204,6 +201,15 @@ public sealed class FreeShowOutputCommandCoordinator
         return await DispatchPreparedAsync(plans, cancellationToken);
     }
 
+    private FreeShowOutputCommandPlan PrepareAgainstCurrent(
+        FreeShowShortcutAction action)
+    {
+        var known = states.TryGetValue(action.OutputId, out var current);
+        var plan = FreeShowOutputCommandPlanner.Prepare(
+            action, configuration, overlays, known ? current!.Snapshot() : default);
+        return known ? plan with { ExpectedNativeRevision = current!.Revision } : plan;
+    }
+
     /// <summary>
     /// Non-executing preflight used by a future source-UI action bridge.
     /// Unimplemented actions stay disabled; this does not alter the
@@ -214,8 +220,16 @@ public sealed class FreeShowOutputCommandCoordinator
     {
         ArgumentNullException.ThrowIfNull(plans);
         var problems = new List<string>();
+        if (plans.Count == 0)
+            problems.Add("No original FreeShow action plan exists for this command.");
         foreach (var plan in plans)
         {
+            if (!plan.CanPlan && plan.Warnings.Count == 0)
+                problems.Add(plan.OutputId + ": original action is not implemented.");
+            if (plan.ExpectedNativeRevision.HasValue &&
+                (!states.TryGetValue(plan.OutputId, out var current) ||
+                 current.Revision != plan.ExpectedNativeRevision.Value))
+                problems.Add(plan.OutputId + ": source output changed since action preparation.");
             foreach (var warning in plan.Warnings)
                 problems.Add(plan.OutputId + ": " + warning);
             if (!plan.CanPlan) continue;
