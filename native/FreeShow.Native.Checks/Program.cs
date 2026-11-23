@@ -513,6 +513,94 @@ using (var previewJson = JsonDocument.Parse("""
         "Unported Stage compositor never falsely rendered as a normal lyric output");
 }
 
+// ProjectContentList.svelte source grouping, original indices and back flow.
+using (var sourceProjects = JsonDocument.Parse("""
+{
+  "projects": {
+    "sunday": {
+      "name":"Sunday Morning", "parent":"/", "created":1,
+      "sectionsCollapsed":true,
+      "shows":[
+        {"id":"intro","type":"section","name":"Opening","color":"#d551ff"},
+        {"id":"original-show-id","type":"show","name":"Praise","layout":"main"},
+        {"id":"video-1","type":"video","name":"Background","loop":true},
+        {"id":"original-show-id","type":"show","name":"Praise Again"},
+        {"id":"prayer","type":"section","name":"Prayer","color":"#33aa66"},
+        {"id":"scripture","type":"show","name":"Bible"},
+        {"id":"later","type":"show_placeholder","name":"Coming Up"}
+      ],
+      "extraProjectField":{"keep":true}
+    }
+  },
+  "folders":{},
+  "projectTemplates":{}
+}
+"""))
+{
+    var library = FreeShowProjectLibrary.Parse(sourceProjects.RootElement);
+    var project = library.Find("sunday")!;
+    var content = FreeShowProjectContentProjection.Prepare(project);
+    Check(content.Groups.Count == 2 &&
+        content.Groups[0].Color == "#d551ff" &&
+        content.Groups[1].Color == "#33aa66",
+        "FreeShow source section colors and grouping are retained");
+    Check(content.Items.Count == 7 &&
+        content.Items.Select(x => x.SourceIndex).SequenceEqual(Enumerable.Range(0, 7)),
+        "Project source indices preserved without consuming indexes for dividers");
+    Check(content.Groups[0].Rows.Any(x => x.SyntheticDivider),
+        "Source inserts synthetic divider when item type switches in a colored section");
+    Check(content.Items[1].Id == content.Items[3].Id &&
+        content.Items[1].SourceIndex != content.Items[3].SourceIndex,
+        "Repeated show references remain separate project entries");
+    Check(content.Items[1].LayoutId == "main" &&
+        content.Items[2].IsMedia && content.Items[^1].Type == "show_placeholder",
+        "Per-project layout overrides and video/placeholder types preserved");
+    Check(ShowDocument.Property(project.Raw, "extraProjectField").ValueKind == JsonValueKind.Object,
+        "Project source unknown fields remain untouched by content projection");
+
+    var nav = new FreeShowProjectNavigation(library);
+    Check(nav.ProjectListViewOpen && nav.ActiveProjectId == null,
+        "Project browser starts in original project-list view");
+    nav.OpenProject("sunday");
+    Check(!nav.ProjectListViewOpen && nav.ActiveItem?.SourceIndex == 0 &&
+        nav.ActiveItem.IsSection, "Opening project selects first source item, including section");
+    var mediaItem = nav.OpenItem(2);
+    Check(mediaItem.Type == "video" && nav.ActiveItem?.SourceIndex == 2,
+        "Selecting a media project item does not reinterpret it as a song");
+    nav.BackToProjects();
+    Check(nav.ProjectListViewOpen && nav.ActiveProjectId == "sunday" &&
+          nav.ActiveItem?.SourceIndex == 2,
+        "Original Projects.svelte back keeps active project and item");
+    nav.OpenProject("sunday");
+    Check(nav.ActiveItem?.SourceIndex == 2, "Reopening same project retains active selection");
+}
+
+var catalogRoot = Path.Combine(Path.GetTempPath(),
+    "freeshow-native-catalog-" + Guid.NewGuid().ToString("N"));
+var catalogFolder = ShowLibrary.ShowsFolder(catalogRoot);
+Directory.CreateDirectory(catalogFolder);
+try
+{
+    var firstPath = Path.Combine(catalogFolder, "first.show");
+    var secondPath = Path.Combine(catalogFolder, "another-name.show");
+    await File.WriteAllBytesAsync(firstPath, bytes);
+    await File.WriteAllBytesAsync(secondPath, bytes);
+    var catalog = new FreeShowReadOnlyShowCatalog(catalogRoot);
+    var found = await catalog.FindAsync(show.ShowId);
+    Check(found?.ShowId == show.ShowId &&
+          found.OriginalBytes().SequenceEqual(bytes),
+          "Native song lookup matches tuple ID, not source filename");
+    Check(catalog.Warnings.Any(x => x.Contains("Duplicate show ID")),
+          "Duplicate .show IDs are reported instead of silently overwriting");
+    Check((await File.ReadAllBytesAsync(firstPath)).SequenceEqual(bytes) &&
+          (await File.ReadAllBytesAsync(secondPath)).SequenceEqual(bytes),
+          "Read-only catalog does not modify either duplicate source song");
+}
+finally
+{
+    Directory.Delete(catalogRoot, recursive:true);
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
