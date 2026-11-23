@@ -390,6 +390,57 @@ using (var liveSettings = JsonDocument.Parse("""
         "Mutating native state never edits the original FreeShow SETTINGS object");
 }
 
+// Original source-aligned MainLayout.svelte native geometry state.
+// These are synthetic fixtures only; no real FreeShow SETTINGS file is edited.
+using (var workspaceSettings = JsonDocument.Parse("""
+{
+  "resized": {
+    "leftPanel": 310, "rightPanel": 530,
+    "leftPanelDrawer": 250, "rightPanelDrawer": 400
+  },
+  "drawer": {"height": 360, "stored": null},
+  "unknownLayoutExtension": {"keep": true}
+}
+"""))
+{
+    var state = FreeShowOperatorWorkspaceState.FromLocalSettings(workspaceSettings.RootElement);
+    Check(FreeShowOperatorWorkspaceState.WindowsMenuBarHeight == 25
+        && FreeShowOperatorWorkspaceState.TopBarHeight == 40,
+        "Original Windows menu bar 25px and top navigation 40px");
+    Check(state.LeftPanelWidth == 310 && state.RightPanelWidth == 530
+        && state.RightPanelIsHorizontal,
+        "Original right panel uses row-reverse when its width exceeds 1.8*290px");
+    Check(state.DrawerHeight == 360
+        && state.LeftDrawerPanelWidth == 250 && state.RightDrawerPanelWidth == 400,
+        "Saved Drawer and inner side panel sizes are read without rewriting settings");
+    Check(state.ShowDrawer && state.ShowTopBar && state.ShowMenuBar,
+        "Original Show page contains menu, top and drawer");
+    Check(!state.WithPage("stage").ShowDrawer
+        && state.WithPage("stage").ShowTopBar,
+        "Stage page has original top and no Drawer");
+    Check(!state.WithPage("settings").ShowDrawer
+        && state.WithPage("edit").ShowDrawer,
+        "Only Show/Edit display the FreeShow drawer");
+    Check(!FreeShowOperatorWorkspaceState.FromLocalSettings(
+        workspaceSettings.RootElement, focusMode:true).ShowTopBar,
+        "Focus mode hides original main Top component");
+    Check(FreeShowOperatorWorkspaceState.FromLocalSettings(
+        workspaceSettings.RootElement, focusMode:true).ShowMenuBar,
+        "Original Windows menu bar is still managed by App.svelte in focus mode");
+    Check(state.WithPanelWidths(1, 10000).LeftPanelWidth == 4
+        && state.WithPanelWidths(1, 10000).RightPanelWidth == 638,
+        "Original Resizeable minimum 4px and 2.2 times maximum 290px are honored");
+    Check(state.WithDrawerHeight(2).DrawerHeight == 40,
+        "Original Drawer.svelte minimum 40px retained");
+    Check(ShowDocument.Property(state.RawSettings, "unknownLayoutExtension")
+        .ValueKind == JsonValueKind.Object, "Unknown local layout settings preserved");
+}
+
+var fallbackLayout = FreeShowOperatorWorkspaceState.FromLocalSettings(default);
+Check(fallbackLayout.LeftPanelWidth == 290 && fallbackLayout.RightPanelWidth == 290
+    && fallbackLayout.DrawerHeight == 300 && fallbackLayout.Page == "show",
+    "Original workspace dimensions and initial show page fallbacks");
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
