@@ -1011,6 +1011,11 @@ using (var originalAudio = JsonDocument.Parse("""
     timers.RegisterSlide("display-a", slideA);
     timers.RegisterOverlay("display-a", "announcement", overlayA);
     timers.RegisterSlide("display-b", slideB);
+    bool preventedReplacement = false;
+    try { timers.RegisterSlide("display-a", new RecordingSourceTimer()); }
+    catch (InvalidOperationException) { preventedReplacement = true; }
+    Check(preventedReplacement && timers.SlideTimerCount == 2,
+        "Native timer registry cannot silently orphan a live slide timer handle");
     var f2Only = await timers.CancelAsync(["display-a"], cancelOverlayTimers:false);
     Check(f2Only.Succeeded && f2Only.CancelledSlideTimers == 1 &&
           f2Only.CancelledOverlayTimers == 0 &&
