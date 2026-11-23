@@ -76,4 +76,17 @@ public sealed record FreeShowCapturedOutputBatch(
 
     public IReadOnlyDictionary<string, JsonElement> OutDataById =>
         Outputs.ToDictionary(x => x.Key, x => x.Value.OutData, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Revalidate once more after native view preparation. A stale
+    /// snapshot cannot be promoted to a coherent visible preview.
+    /// </summary>
+    public bool StillMatches(
+        IReadOnlyDictionary<string, FreeShowOutputState> live)
+    {
+        ArgumentNullException.ThrowIfNull(live);
+        return IsCoherent && Outputs.All(x =>
+            live.TryGetValue(x.Key, out var state) &&
+            state.Revision == x.Value.Revision);
+    }
 }
