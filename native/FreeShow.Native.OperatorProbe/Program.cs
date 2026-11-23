@@ -97,12 +97,12 @@ public sealed class OperatorProbeApp : Application
             var browser = Projects != null ? new FreeShowProjectBrowser(Projects) : null;
             Control projectsRegion = browser ?? (Control)new Border();
 
-            void DisplaySelectedShow(ShowDocument? selected)
+            void DisplaySelectedShow(ShowDocument? selected, string? arrangementId = null)
             {
                 // The chosen source item may be a section or media file.
                 // Those types must not be shown using an unrelated lyric show.
                 Control center = selected == null
-                    ? new Border() : new FreeShowShowRegion(selected);
+                    ? new Border() : new FreeShowShowRegion(selected, arrangementId);
                 workspace.RegisterPageRegions("show",
                     new FreeShowPageRegions(projectsRegion, center, null));
                 if (LocalOutputSettings != null)
@@ -145,7 +145,7 @@ public sealed class OperatorProbeApp : Application
 
                         if (myVersion == selectionVersion &&
                             !nextRequest.IsCancellationRequested)
-                            DisplaySelectedShow(selected);
+                            DisplaySelectedShow(selected, args.Item.LayoutId);
                     }
                     catch (OperationCanceledException) { /* newer selection wins */ }
                     catch (Exception error)
