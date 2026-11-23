@@ -806,6 +806,33 @@ using (var originalOverlays = JsonDocument.Parse("""
           controller.States["screen1"].Overlays.Count == 0,
         "Keyboard F3 clears even originally locked overlays as shortcuts.ts specifies");
 
+    var previewButtonPlans = controller.PlanPreviewClearAction("overlays");
+    Check(previewButtonPlans.Count == 2 &&
+          previewButtonPlans.All(p => p.SourceAction.Command ==
+              NativeShortcutCommand.ClearOverlays),
+        "Original Preview overlay button is distinct from keyboard F3 clear-all overlays");
+    Check(controller.CheckReadiness(previewButtonPlans).Count > 0,
+        "Preview action remains blocked if any active output lacks complete overlay backend");
+    Check(controller.PlanPreviewClearAction("all").Count == 0 &&
+          controller.PlanPreviewClearAction("nextTimer").Count == 0,
+        "Unported Clear All and timer actions have no fake native output plans");
+
+    var untouchedController = new FreeShowOutputCommandCoordinator(
+        config, originalOverlays.RootElement);
+    var hookedCache = new FreeShowOutputSlidePositionCache();
+    var hooks = FreeShowSlideCacheSourceEffects.Create(
+        hookedCache, untouchedController,
+        id => id == show.ShowId ? show : null, () => false);
+    var originalF2 = untouchedController.PlanPreviewClearAction("slide")[0];
+    await hooks[FreeShowSourceEffect.CaptureLastSlidePositionIfEligible](
+        originalF2, CancellationToken.None);
+    Check(hookedCache.Get("screen1").HasValue &&
+          ShowDocument.String(hookedCache.Get("screen1")!.Value, "id") == show.ShowId,
+        "F2 source-effect hook captures actual original OutSlide before it is cleared");
+    await hooks[FreeShowSourceEffect.ClearSlideCache](originalF2, CancellationToken.None);
+    Check(hookedCache.Get("screen1") == null,
+        "F2 double-press source-effect hook clears the shared slide cache");
+
     var globalAudio = FreeShowOutputCommandPlanner.Prepare(
         new FreeShowShortcutAction(NativeShortcutCommand.ClearAudioAndPlaylist, ""), config);
     Check(globalAudio.CanPlan &&
