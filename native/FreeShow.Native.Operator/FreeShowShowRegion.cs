@@ -14,6 +14,7 @@ namespace FreeShow.Native.Operator;
 /// </summary>
 public sealed class FreeShowShowRegion : UserControl
 {
+    private readonly ShowDocument sourceShow;
     private readonly TextBlock title = new()
     {
         FontSize = 16,
@@ -34,6 +35,7 @@ public sealed class FreeShowShowRegion : UserControl
     public FreeShowShowRegion(ShowDocument source, string? projectLayoutId = null)
     {
         ArgumentNullException.ThrowIfNull(source);
+        sourceShow = source;
         ShowId = source.ShowId;
         Slides = new FreeShowSlideCards(source);
         string effectiveLayoutId = source.ActiveLayoutId;
@@ -74,5 +76,28 @@ public sealed class FreeShowShowRegion : UserControl
         root.Children.Add(header);
         root.Children.Add(Slides);
         Content = root;
+    }
+
+    /// <summary>
+    /// Developer-only inspect of the original arrow/Home/End navigation
+    /// for this selected Show. Does not change Native cards, output state,
+    /// project history or real worship output.
+    /// </summary>
+    public FreeShowSlideAdvanceResult InspectNavigation(
+        System.Text.Json.JsonElement originalOutSlide,
+        string originalOutputId,
+        FreeShowSlideAdvanceDirection direction,
+        int? minimumStyleLines,
+        Func<string, string, bool?>? bindingResolver = null)
+    {
+        // A project arrangement may differ from the .show active layout.
+        // Require the inspected output to name that arrangement explicitly.
+        var requested = ShowDocument.String(originalOutSlide, "layout");
+        if (requested.Length > 0 && requested != Slides.LayoutId)
+            return new(FreeShowSlideAdvanceKind.Refused, "", "", null,
+                default, "The operator is displaying a different source arrangement.", true);
+        return FreeShowSlideAdvancePlanner.Prepare(
+            sourceShow, originalOutSlide, originalOutputId, direction,
+            minimumStyleLines, bindingResolver);
     }
 }
