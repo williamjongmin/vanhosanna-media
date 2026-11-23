@@ -60,7 +60,12 @@ public static class FreeShowOutputLayerPlanner
             var transition = ResolveTransition(frame.RawLayoutData, style);
             if (template.TemplateExists && template.Items.ValueKind == JsonValueKind.Array
                 && template.Items.GetArrayLength() > 0)
-                warnings.Add("Template merging (mergeWithTemplate) not implemented; selected template is metadata only.");
+            {
+                var merge = FreeShowTemplateMerger.Apply(frame, template);
+                warnings.AddRange(merge.Unsupported);
+                if (!merge.WasApplied && merge.Unsupported.Count == 0)
+                    warnings.Add("FreeShow template was not applied to this slide.");
+            }
 
             if (!string.IsNullOrWhiteSpace(templateBackground))
                 warnings.Add("Template media background not rendered yet: " + templateBackground);
