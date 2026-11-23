@@ -1,26 +1,42 @@
 namespace FreeShow.Native.Core;
 
 /// <summary>
-/// In-memory record of original FreeShow slideTimers and overlayTimers
-/// (src/frontend/components/output/clear.ts). This does NOT create or
-/// schedule a timer; a real timer engine must register its native handle.
-/// Original clearTimers(outputId, false) cancels slide timers only. Full
-/// clearTimers(outputId, true) also clears overlay/effect timers.
+/// In-memory handles corresponding to original FreeShow slideTimers and
+/// overlayTimers. An actual source-aligned scheduler must register them;
+/// this registry does not create/schedule timers or pretend an unknown
+/// original timer has been cancelled.
+/// clearTimers(outputId, false) cancels slide timers only. The default
+/// clearTimers(outputId, true) additionally cancels overlay/effect timers.
 /// </summary>
 public sealed class FreeShowOutputTimerRegistry
 {
+    private readonly object gate = new();
+    private readonly SemaphoreSlim cancellationGate = new(1, 1);
     private readonly Dictionary<string, IFreeShowTimerCancellation> slideTimers =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, IFreeShowTimerCancellation> overlayTimers =
         new(StringComparer.Ordinal);
 
-    public int SlideTimerCount => slideTimers.Count;
-    public int OverlayTimerCount => overlayTimers.Count;
+    public int SlideTimerCount
+    {
+        get { lock (gate) return slideTimers.Count; }
+    }
+
+    public int OverlayTimerCount
+    {
+        get { lock (gate) return overlayTimers.Count; }
+    }
 
     public void RegisterSlide(string outputId, IFreeShowTimerCancellation timer)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputId);
-        slideTimers[outputId] = timer ?? throw new ArgumentNullException(nameof(timer));
+        ArgumentNullException.ThrowIfNull(timer);
+        lock (gate)
+        {
+            if (!slideTimers.TryAdd(outputId, timer))
+                throw new InvalidOperationException(
+                    "Existing original output slide timer must be cancelled before replacement.");
+        }
     }
 
     public void RegisterOverlay(string outputId, string overlayId,
@@ -28,64 +44,85 @@ public sealed class FreeShowOutputTimerRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputId);
         ArgumentException.ThrowIfNullOrWhiteSpace(overlayId);
-        overlayTimers[Key(outputId, overlayId)] = timer ??
-            throw new ArgumentNullException(nameof(timer));
+        ArgumentNullException.ThrowIfNull(timer);
+        lock (gate)
+        {
+            if (!overlayTimers.TryAdd(Key(outputId, overlayId), timer))
+                throw new InvalidOperationException(
+                    "Existing original overlay timer must be cancelled before replacement.");
+        }
     }
 
     /// <summary>
-    /// A failing backend timer remains registered for explicit reconciliation;
-    /// never silently mark it cancelled. Only registered handles are touched.
-    /// The caller must separately clear OutData.transition and propagate
-    /// output_changed as the source setOutput() implementation requires.
+    /// Failed cancellations remain registered. New timers registered
+    /// concurrently with cancellation cannot be accidentally removed; only
+    /// the exact handle that acknowledged cancellation is removed.
+    /// OutData.transition and output_changed need their own source hooks.
     /// </summary>
     public async Task<FreeShowTimerCancellationReport> CancelAsync(
-        IReadOnlyList<string> originalOutputIds,
-        bool cancelOverlayTimers,
+        IReadOnlyList<string> originalOutputIds, bool cancelOverlayTimers,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(originalOutputIds);
-        var selected = originalOutputIds.ToHashSet(StringComparer.Ordinal);
-        var errors = new List<string>();
-        int slidesCancelled = 0, overlaysCancelled = 0;
-
-        foreach (var item in slideTimers.ToArray())
+        await cancellationGate.WaitAsync(cancellationToken);
+        try
         {
-            if (!selected.Contains(item.Key)) continue;
-            cancellationToken.ThrowIfCancellationRequested();
-            try
+            var selected = originalOutputIds.ToHashSet(StringComparer.Ordinal);
+            KeyValuePair<string, IFreeShowTimerCancellation>[] slides;
+            KeyValuePair<string, IFreeShowTimerCancellation>[] overlays;
+            lock (gate)
             {
-                await item.Value.CancelAsync(cancellationToken);
-                slideTimers.Remove(item.Key);
-                slidesCancelled++;
+                slides = slideTimers.Where(x => selected.Contains(x.Key)).ToArray();
+                overlays = !cancelOverlayTimers
+                    ? [] : overlayTimers.Where(x =>
+                        selected.Contains(x.Key[..x.Key.IndexOf('\0')])).ToArray();
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                errors.Add("Slide timer " + item.Key + " failed: " + ex.Message);
-            }
-        }
 
-        if (cancelOverlayTimers)
-        {
-            foreach (var item in overlayTimers.ToArray())
+            var errors = new List<string>();
+            int slidesCancelled = 0, overlaysCancelled = 0;
+            foreach (var item in slides)
             {
-                var outputId = item.Key[..item.Key.IndexOf('\0')];
-                if (!selected.Contains(outputId)) continue;
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     await item.Value.CancelAsync(cancellationToken);
-                    overlayTimers.Remove(item.Key);
+                    lock (gate)
+                    {
+                        if (slideTimers.TryGetValue(item.Key, out var registered) &&
+                            ReferenceEquals(registered, item.Value))
+                            slideTimers.Remove(item.Key);
+                    }
+                    slidesCancelled++;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    errors.Add("Slide timer " + item.Key + " failed: " + ex.Message);
+                }
+            }
+
+            foreach (var item in overlays)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    await item.Value.CancelAsync(cancellationToken);
+                    lock (gate)
+                    {
+                        if (overlayTimers.TryGetValue(item.Key, out var registered) &&
+                            ReferenceEquals(registered, item.Value))
+                            overlayTimers.Remove(item.Key);
+                    }
                     overlaysCancelled++;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     errors.Add("Overlay timer " + item.Key.Replace('\0', ':') +
-                               " failed: " + ex.Message);
+                        " failed: " + ex.Message);
                 }
             }
+            return new(slidesCancelled, overlaysCancelled, errors.AsReadOnly());
         }
-
-        return new(slidesCancelled, overlaysCancelled, errors.AsReadOnly());
+        finally { cancellationGate.Release(); }
     }
 
     private static string Key(string outputId, string overlayId) =>
