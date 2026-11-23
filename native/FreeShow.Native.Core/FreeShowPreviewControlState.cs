@@ -41,6 +41,8 @@ public static class FreeShowPreviewControlState
         var scene = ActiveState(active, "scene");
         var transition = ActiveState(active, "transition");
 
+        // Original isOutCleared(null) ignores scene and refresh. Their
+        // independent presence must not make the Clear all state active.
         var overlay = overlayIds.Length == 0
             ? PreviewLayerPresence.Cleared
             : knownOverlayLocks
@@ -58,7 +60,7 @@ public static class FreeShowPreviewControlState
                 ? scene : PreviewLayerPresence.Cleared, !outLocked && scene == PreviewLayerPresence.Active,
                 true, "clear.scene", ""),
             new FreeShowPreviewControl("all", "clear", Combine(
-                background, slide, overlay, effect, scene, audio, timers),
+                background, slide, overlay, effect, audio, timers),
                 false, true, "clear.all", "Escape"),
             new FreeShowPreviewControl("background", "image", background,
                 !outLocked && background == PreviewLayerPresence.Active,
