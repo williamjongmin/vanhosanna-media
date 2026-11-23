@@ -16,14 +16,20 @@ public sealed class FreeShowMultiOutputPreview : UserControl
 {
     private readonly FreeShowOutputConfiguration configuration;
     private readonly ShowDocument? sourceShow;
+    private readonly FreeShowVisualSettings? sourceStyles;
+    private readonly IReadOnlyDictionary<string, FreeShowOutputState>? nativeStates;
     private readonly WrapPanel previews = new() { Orientation = Orientation.Horizontal };
     private int gridColumns = 2;
 
     public FreeShowMultiOutputPreview(
-        FreeShowOutputConfiguration settings, ShowDocument? loadedShow = null)
+        FreeShowOutputConfiguration settings, ShowDocument? loadedShow = null,
+        FreeShowVisualSettings? originalStyles = null,
+        IReadOnlyDictionary<string, FreeShowOutputState>? outputStates = null)
     {
         configuration = settings ?? throw new ArgumentNullException(nameof(settings));
         sourceShow = loadedShow;
+        sourceStyles = originalStyles;
+        nativeStates = outputStates;
         previews.SizeChanged += (_, _) => ResizeCards();
         Content = previews;
         Refresh();
@@ -57,7 +63,7 @@ public sealed class FreeShowMultiOutputPreview : UserControl
             child.Width = cardWidth;
     }
 
-    private static Control CreatePreview(FreeShowOutputPreviewEntry entry)
+    private Control CreatePreview(FreeShowOutputPreviewEntry entry)
     {
         var output = entry.Output;
         var color = Color.TryParse(output.Color, out var value)
@@ -82,14 +88,60 @@ public sealed class FreeShowMultiOutputPreview : UserControl
             BorderThickness = new Thickness(output.Active ? 2 : 1),
             ClipToBounds = true
         };
+        string? omission = entry.Omission;
         if (entry.SourceFrame != null)
         {
-            var renderer = new NativeSlidePresenter();
-            renderer.Prepare([NativeRenderPlanner.BuildFrame(entry.SourceFrame)]);
-            renderer.Show(0);
-            surface.Child = renderer;
+            var candidate = NativeRenderPlanner.BuildFrame(entry.SourceFrame);
+            bool requiresReveal = entry.SourceFrame.Items.Any(item =>
+                ShowDocument.IsTrue(item.Raw, "clickReveal") ||
+                ShowDocument.IsTrue(item.Raw, "lineReveal"));
+            if (requiresReveal)
+            {
+                if (sourceStyles == null || nativeStates == null ||
+                    !nativeStates.TryGetValue(output.Id, out var native))
+                {
+                    omission = "Original output style/reveal state unavailable";
+                }
+                else
+                {
+                    var style = FreeShowRevealStyleResolver.Resolve(
+                        output.Id, configuration, sourceStyles, nativeStates);
+                    if (!style.CanPrepare)
+                        omission = style.Warning;
+                    else
+                    {
+                        var outSlide = ShowDocument.Property(native.Snapshot(), "slide");
+                        var projected = FreeShowRevealRenderProjection.Prepare(
+                            candidate, outSlide, style.Context!);
+                        if (!projected.IsSupported)
+                            omission = string.Join("; ", projected.Unported);
+                        else
+                            candidate = projected.Visible;
+                    }
+                }
+            }
+
+            // Rendering the full lyric while a click/line reveal is incomplete
+            // leaks hidden words to operators. Show a blank unknown preview
+            // instead of pretending that everything is already revealed.
+            if (omission == null)
+            {
+                var renderer = new NativeSlidePresenter();
+                renderer.Prepare([candidate]);
+                renderer.Show(0);
+                surface.Child = renderer;
+            }
         }
         stack.Children.Add(surface);
+        if (omission != null)
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Preview unavailable: " + omission,
+                FontSize = 9,
+                Foreground = Brushes.Gray,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(4, 1)
+            });
 
         stack.Children.Add(new TextBlock
         {
