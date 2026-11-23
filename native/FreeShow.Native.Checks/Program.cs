@@ -604,6 +604,82 @@ finally
     Directory.Delete(catalogRoot, recursive:true);
 }
 
+// Source Preview.svelte/ClearButtons.svelte + helpers/output.ts states.
+using (var outputSettings = JsonDocument.Parse("""
+{
+ "outLocked":false,
+ "outputs":{
+  "main-1":{
+    "name":"Primary","enabled":true,"active":true,
+    "bounds":{"x":0,"y":0,"width":1920,"height":1080},
+    "out":{
+      "background":{"path":"background-video.mp4"},
+      "slide":{"id":"original-show-id","index":1,"layout":"main"},
+      "overlays":["locked-1","open-1"],
+      "effects":["glow"],
+      "scene":{"id":"scene-1"},
+      "transition":null
+    }
+  }
+ }
+}
+"""))
+using (var lockedOverlays = JsonDocument.Parse("""
+{"locked-1":{"name":"Pinned","locked":true},"open-1":{"name":"Announcement","locked":false}}
+"""))
+{
+    var outputConfiguration = FreeShowOutputConfiguration.Parse(outputSettings.RootElement);
+    var snapshot = FreeShowPreviewControlState.Prepare(
+        outputConfiguration, lockedOverlays.RootElement);
+    Check(snapshot.ActiveOutputIds.SequenceEqual(["main-1"]) &&
+          !snapshot.OutputLocked, "Original active output IDs used by ClearButtons");
+    Check(snapshot.Control("slide").Presence == PreviewLayerPresence.Active &&
+          snapshot.Control("background").Presence == PreviewLayerPresence.Active,
+        "Original FreeShow Preview identifies active lyric and media background separately");
+    Check(snapshot.Control("overlays").SourceCanClear &&
+          snapshot.HasLockedOverlays && snapshot.OverlayLocksAreKnown,
+        "F3 knows unlocked vs locked overlays from original overlays store");
+    Check(snapshot.Control("audio").Presence == PreviewLayerPresence.Unknown &&
+          snapshot.Control("nextTimer").Presence == PreviewLayerPresence.Unknown,
+        "Audio/timers unknown until their runtime stores are connected");
+    Check(snapshot.RecommendedCategory == "overlays",
+        "Preview active-section precedence respects overlays before lyric and background");
+    Check(snapshot.Control("all").SourceCanClear == false,
+        "Original Clear all remains gated until complete audio/cache/timer controller");
+
+    var nav = new FreeShowPreviewCategoryNavigation();
+    nav.Update(snapshot);
+    Check(nav.SelectedCategory == "overlays" && nav.FollowSourceAutomatically,
+        "Native preview initially follows original recommended category");
+    nav.Select("slide");
+    Check(nav.SelectedCategory == "slide" && !nav.FollowSourceAutomatically,
+        "Operator preview expansion selects slide section without affecting output");
+    nav.Update(snapshot);
+    Check(nav.SelectedCategory == "slide",
+        "Manual preview category stays selected while content exists");
+
+    var lackingLocks = FreeShowPreviewControlState.Prepare(outputConfiguration);
+    Check(lackingLocks.Control("overlays").Presence == PreviewLayerPresence.Unknown &&
+          !lackingLocks.Control("overlays").SourceCanClear,
+        "Missing overlay lock data never allows unsafe overlay clear");
+
+    using var blockedSource = JsonDocument.Parse("""
+{
+ "outLocked":true,
+ "outputs":{"main-1":{
+  "name":"Primary","enabled":true,"active":true,
+  "bounds":{"x":0,"y":0,"width":1920,"height":1080},
+  "out":{"background":{"path":"background-video.mp4"},"slide":{"id":"original-show-id"}}}}
+}
+""");
+    var blocked = FreeShowPreviewControlState.Prepare(
+        FreeShowOutputConfiguration.Parse(blockedSource.RootElement), lockedOverlays.RootElement);
+    Check(blocked.OutputLocked &&
+          !blocked.Control("slide").SourceCanClear &&
+          !blocked.Control("background").SourceCanClear,
+        "FreeShow outLocked prevents direct preview clear commands");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
