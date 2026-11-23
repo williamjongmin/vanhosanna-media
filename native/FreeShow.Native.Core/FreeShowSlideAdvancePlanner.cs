@@ -72,8 +72,8 @@ public static class FreeShowSlideAdvancePlanner
             ShowDocument.IsTrue(currentOutSlide, "itemClickReveal"),
             ReadInt(ShowDocument.Property(currentOutSlide, "revealCount")) ?? 0);
 
-        if (direction is FreeShowSlideAdvanceDirection.Next or
-            FreeShowSlideAdvanceDirection.Previous && current != null)
+        if ((direction is FreeShowSlideAdvanceDirection.Next or
+            FreeShowSlideAdvanceDirection.Previous) && current != null)
         {
             var reveal = AnalyzeReveal(current, currentPosition, fewestOutputStyleLines ?? 0);
             if (next && (!reveal.StyleEnded || !reveal.ClickEnded || !reveal.LinesEnded))
@@ -116,7 +116,7 @@ public static class FreeShowSlideAdvancePlanner
 
         // Source next-slide behavior: end:true loops the show to index 0.
         if (next && current != null && ShowDocument.IsTrue(
-                ShowDocument.Property(current.RawEntry, "data"), "end"))
+                current.RawEntry, "end"))
             index = -1;
 
         index += next ? 1 : -1;
@@ -129,8 +129,7 @@ public static class FreeShowSlideAdvancePlanner
                 continue;
             }
 
-            var bindings = ShowDocument.Property(
-                ShowDocument.Property(candidate.RawEntry, "data"), "bindings");
+            var bindings = ShowDocument.Property(candidate.RawEntry, "bindings");
             if (bindings.ValueKind == JsonValueKind.Array &&
                 bindings.GetArrayLength() > 0)
             {
@@ -171,8 +170,7 @@ public static class FreeShowSlideAdvancePlanner
     }
 
     private static bool IsDisabled(LayoutEntry entry) =>
-        entry.EffectiveDisabled ||
-        ShowDocument.IsTrue(ShowDocument.Property(entry.RawEntry, "data"), "disabled");
+        entry.EffectiveDisabled;
 
     private static bool? BindingDecision(JsonElement raw, string outputId,
         Func<string, string, bool?>? matchesOutput)
@@ -244,7 +242,9 @@ public static class FreeShowSlideAdvancePlanner
         ShowDocument source, LayoutEntry entry, string layoutId,
         Dictionary<string, object?> shaped, FreeShowSlideAdvanceKind kind)
     {
-        var data = ShowDocument.Property(entry.RawEntry, "data");
+        // _show().layouts().ref() sets ref.data directly to layoutSlide
+        // (or its child override); RawEntry is exactly that source object.
+        var data = entry.RawEntry;
         bool action = HasOwnData(data, "actions") ||
                       HasOwnData(data, "background") ||
                       HasOwnData(data, "nextTimer");
