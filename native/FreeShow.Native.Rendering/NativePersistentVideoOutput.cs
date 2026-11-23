@@ -92,6 +92,18 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
     }
 
     /// <summary>
+    /// FreeShow clearSlide()/F2: hide lyric overlay only; keep player,
+    /// video timestamp and prepared slide cache unchanged.
+    /// </summary>
+    public void ClearLyrics()
+    {
+        if (closing) throw new ObjectDisposedException(nameof(NativePersistentVideoOutput));
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Native lyrics must be cleared on the UI thread.");
+        lyrics.ClearVisible();
+    }
+
+    /// <summary>
     /// Set the background independently from lyric slide selection.
     /// Call only on a confirmed background change, not for each cue.
     /// Null/empty clears. Local video file paths only; online/NDI are separate
