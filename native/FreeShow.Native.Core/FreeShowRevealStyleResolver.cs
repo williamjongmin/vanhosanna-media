@@ -22,6 +22,30 @@ public static class FreeShowRevealStyleResolver
         ArgumentNullException.ThrowIfNull(visuals);
         ArgumentNullException.ThrowIfNull(outputStates);
 
+        var snapshots = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var state in outputStates)
+            snapshots[state.Key] = state.Value.Snapshot();
+        return ResolveCaptured(originalOutputId, configuration, visuals, snapshots,
+            sourceHasUnportedVirtualBreaks);
+    }
+
+    /// <summary>
+    /// Compute source-style line state entirely from one already-captured
+    /// OutData batch. Preview must not read a different slide revision
+    /// separately from the text that it draws.
+    /// </summary>
+    public static FreeShowRevealStyleResolution ResolveCaptured(
+        string originalOutputId,
+        FreeShowOutputConfiguration configuration,
+        FreeShowVisualSettings visuals,
+        IReadOnlyDictionary<string, JsonElement> capturedOutData,
+        bool sourceHasUnportedVirtualBreaks = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalOutputId);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(visuals);
+        ArgumentNullException.ThrowIfNull(capturedOutData);
+
         var output = configuration.Find(originalOutputId);
         if (output == null || !output.Enabled || output.StageSourceId != null)
             return Refused("Original FreeShow normal output is absent or disabled.");
@@ -45,9 +69,9 @@ public static class FreeShowRevealStyleResolver
         int highest = 0;
         foreach (var active in configuration.GetActiveNormalOutputs())
         {
-            if (!outputStates.TryGetValue(active.Id, out var state))
-                return Refused("Missing current OutData for " + active.Id);
-            var slide = ShowDocument.Property(state.Snapshot(), "slide");
+            if (!capturedOutData.TryGetValue(active.Id, out var data))
+                return Refused("Missing captured OutData for " + active.Id);
+            var slide = ShowDocument.Property(data, "slide");
             var line = ShowDocument.Property(slide, "line");
             if (line.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
                 continue;
