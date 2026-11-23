@@ -173,6 +173,12 @@ public sealed record FreeShowSlideTransitionPlan(
 public interface IFreeShowSlideTransitionRuntime
 {
     string OutputId { get; }
+    /// <summary>
+    /// Verify that the exact future OutSlide lyric frame is already
+    /// prepared in the output-owned native visual session. A visual
+    /// built only after the physical source command begins is not ready.
+    /// </summary>
+    bool HasPreparedSourceVisual(FreeShowSlideTransitionTarget target);
     bool SupportsCompletePhase(
         FreeShowSlideTransitionPhase phase,
         FreeShowSlideTransitionTarget target);
