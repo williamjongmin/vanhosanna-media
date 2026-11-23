@@ -51,10 +51,14 @@ public sealed class FreeShowOutputState
                 data["background"] = null;
                 return true;
             case NativeShortcutCommand.ClearOverlays:
-                // The original FreeShow clearOverlays() *preserves locked
-                // overlays*. The output data cannot tell which IDs are
-                // locked. Never erase them without original overlay metadata.
+                // Preview.svelte clearOverlays preserves locked IDs and
+                // requires the original overlay store. Reject blind clears.
                 return false;
+            case NativeShortcutCommand.ClearAllOverlaysForShortcut:
+                // shortcuts.ts F3 clears every overlay (including locked
+                // overlays), unlike the Preview clear button.
+                data["overlays"] = new JsonArray();
+                return true;
             case NativeShortcutCommand.ClearEffects:
                 data["effects"] = new JsonArray();
                 return true;
