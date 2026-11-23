@@ -70,6 +70,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.12 Projects / Preview:** the original `Config/projects.json` folder/project tree, per-project show/arrangement references, and multi-output `SETTINGS.outputs` preview metadata are now represented as read-only native models and Avalonia controls. The developer OperatorProbe can display left Projects and right Preview when supplied source folders/settings. Unported stage/media/capture views are not faked; actual project editing and full FreeShow output Preview controls remain unported. See `PROJECT-PREVIEW-STATUS.md`. No Windows build, synthetic test execution or physical latency measurement completed.
 
+- **0.0.13 Original project item navigation:** ported the original project contents section/type grouping and per-item source index into a read-only native model. The left project browser now switches from folder tree into project items and preserves active selection when returning. A lazily indexed read-only `Shows` catalog resolves selected song IDs from actual `.show` tuple contents, allowing the developer OperatorProbe to show source-matched slides without sending anything live. See `PROJECT-ITEM-NAVIGATION-STATUS.md`. Full project/scene/timeline/output interactions and visual parity remain unported, and no Windows build or performance checks have run.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
