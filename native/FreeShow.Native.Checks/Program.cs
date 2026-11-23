@@ -680,10 +680,190 @@ using (var lockedOverlays = JsonDocument.Parse("""
         "FreeShow outLocked prevents direct preview clear commands");
 }
 
+// Native output controller: original IDs, complete-effect preflight and
+// state changes ONLY after a complete runtime acknowledges the command.
+using (var controlSettings = JsonDocument.Parse("""
+{
+ "outLocked":false,
+ "outputs":{
+  "screen1":{"name":"Primary","enabled":true,"active":true,
+   "bounds":{"x":0,"y":0,"width":1920,"height":1080},
+   "out":{"background":{"path":"song-background.mp4"},
+     "slide":{"id":"original-show-id","layout":"main","index":1,"line":0},
+     "overlays":["pinned","temporary"],"effects":["fade"],"scene":{"id":"scene1"}}},
+  "screen2":{"name":"Online","enabled":true,"active":true,
+   "bounds":{"x":1920,"y":0,"width":1920,"height":1080},
+   "out":{"background":{"path":"song-background.mp4"},
+     "slide":{"id":"original-show-id","layout":"main","index":1},
+     "overlays":[],"effects":[]}}
+ }
+}
+"""))
+using (var originalOverlays = JsonDocument.Parse("""
+{"pinned":{"name":"Persistent","locked":true},
+ "temporary":{"name":"Lyrics Banner","locked":false}}
+"""))
+{
+    var config = FreeShowOutputConfiguration.Parse(controlSettings.RootElement);
+    var controller = new FreeShowOutputCommandCoordinator(
+        config, originalOverlays.RootElement);
+
+    var clearSlide = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "screen1"), config);
+    Check(clearSlide.CanPlan &&
+          clearSlide.RequiredEffects.SequenceEqual([
+              FreeShowSourceEffect.CaptureLastSlidePositionIfEligible,
+              FreeShowSourceEffect.CancelNextSlideTimers,
+              FreeShowSourceEffect.ClearSlideOutput,
+              FreeShowSourceEffect.NotifySlideCleared]),
+          "Original F2 effect order caches position, cancels timer, clears lyrics and notifies actions");
+    Check(clearSlide.SourceAction.OutputId == "screen1",
+        "F2 source output identity is preserved");
+
+    var denied = await controller.DispatchPreparedAsync([clearSlide]);
+    Check(denied.Status == FreeShowCommandResultStatus.Refused &&
+          controller.States["screen1"].HasSlide,
+        "Missing live original runtime refuses F2 and preserves state");
+
+    var fake1 = new RecordingOutputCommandRuntime("screen1", Enum.GetValues<FreeShowSourceEffect>());
+    controller.RegisterSourceCompleteRuntime(fake1);
+    var fake2 = new RecordingOutputCommandRuntime("screen2",
+        [FreeShowSourceEffect.ClearSlideOutput]);
+    controller.RegisterSourceCompleteRuntime(fake2);
+
+    var firstScreenClear = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearBackground, "screen1"),
+        config);
+    var secondScreenClear = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearBackground, "screen2"),
+        config);
+    var batchDenied = await controller.DispatchPreparedAsync(
+        [firstScreenClear, secondScreenClear]);
+    Check(batchDenied.Status == FreeShowCommandResultStatus.Refused &&
+          fake1.Executed.Count == 0 &&
+          controller.States["screen1"].HasActiveBackground,
+        "Multi-output batch rejects missing capability BEFORE changing any screen");
+
+    var f2Ok = await controller.DispatchPreparedAsync([clearSlide]);
+    Check(f2Ok.Succeeded && f2Ok.ExecutedPlans == 1 &&
+          fake1.Executed.SequenceEqual(clearSlide.RequiredEffects) &&
+          !controller.States["screen1"].HasSlide &&
+          controller.States["screen1"].HasActiveBackground,
+        "Acknowledged F2 clears only lyrics and preserves separately playing background");
+
+    var livePreview = FreeShowPreviewControlState.Prepare(
+        config, originalOverlays.RootElement, currentNativeStates:controller.States);
+    Check(livePreview.Control("slide").Presence == PreviewLayerPresence.Active &&
+          livePreview.Control("background").Presence == PreviewLayerPresence.Active,
+        "Preview sees other active output still displaying lyrics and background");
+
+    fake2.AddCapabilities([
+        FreeShowSourceEffect.CaptureLastSlidePositionIfEligible,
+        FreeShowSourceEffect.CancelNextSlideTimers,
+        FreeShowSourceEffect.NotifySlideCleared]);
+    var screen2Slide = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "screen2"), config);
+    Check((await controller.DispatchPreparedAsync([screen2Slide])).Succeeded &&
+          !controller.States["screen2"].HasSlide,
+        "Second screen clear only affects its own Native OutData state");
+
+    livePreview = FreeShowPreviewControlState.Prepare(
+        config, originalOverlays.RootElement, currentNativeStates:controller.States);
+    Check(livePreview.Control("slide").Presence == PreviewLayerPresence.Cleared &&
+          livePreview.Control("background").Presence == PreviewLayerPresence.Active,
+        "Preview reads committed in-memory output state, not stale source SETTINGS");
+
+    var f3 = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "screen1"),
+        config, originalOverlays.RootElement);
+    Check(f3.CanPlan && f3.LockedOverlayIds.SequenceEqual(["pinned"]),
+        "F3 preflight retains the original locked overlay metadata");
+    var f3Denied = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "screen1"),
+        config);
+    Check(!f3Denied.CanPlan && f3Denied.Warnings.Count > 0 &&
+          controller.States["screen1"].Overlays.Count == 2,
+        "F3 is refused without actual original overlay lock definitions");
+    Check((await controller.DispatchPreparedAsync([f3])).Succeeded &&
+          controller.States["screen1"].Overlays.SequenceEqual(["pinned"]) &&
+          controller.States["screen1"].Effects.Count == 0,
+        "Successful F3 preserves pinned overlay, clears unlocked overlay and effects");
+
+    var globalAudio = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearAudioAndPlaylist, ""), config);
+    Check(globalAudio.CanPlan &&
+          (await controller.DispatchPreparedAsync([globalAudio])).Status ==
+              FreeShowCommandResultStatus.Refused,
+        "F4 remains blocked until a source-complete global audio backend is registered");
+
+    var cache = new FreeShowOutputSlidePositionCache();
+    using var positioned = JsonDocument.Parse("""
+{"outputs":{"screen1":{"name":"Primary","enabled":true,"active":true,
+"bounds":{"width":1920,"height":1080},
+"out":{"slide":{"id":"original-show-id","layout":"main","index":1,
+"line":0,"unknownOriginal":"retained"}}}}}
+""");
+    var positionState = new FreeShowOutputState(
+        FreeShowOutputConfiguration.Parse(positioned.RootElement).Find("screen1")!);
+    Check(cache.TryCapture(positionState, show, focusMode:false) &&
+          ShowDocument.String(cache.Get("screen1")!.Value, "unknownOriginal") == "retained",
+        "F2 slide cache retains original OutSlide fields without rewriting .show");
+    using var lastSlideState = JsonDocument.Parse("""
+{"outputs":{"screen1":{"name":"Primary","enabled":true,"active":true,
+"bounds":{"width":1920,"height":1080},
+"out":{"slide":{"id":"original-show-id","layout":"main","index":3}}}}
+""");
+    var last = new FreeShowOutputState(
+        FreeShowOutputConfiguration.Parse(lastSlideState.RootElement).Find("screen1")!);
+    Check(!cache.TryCapture(last, show, focusMode:false) &&
+          cache.TryCapture(last, show, focusMode:true),
+        "Original FreeShow excludes final slide unless focus mode preserves it");
+    cache.Clear();
+    Check(cache.Snapshot().Count == 0, "Double F2 erases cached original output positions");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
 {
     if (!condition) throw new InvalidOperationException("FAIL: " + label);
     Console.WriteLine("OK: " + label);
+}
+
+
+/// <summary>
+/// Only the synthetic compatibility checks can construct this recorder.
+/// Production output adapters must actually perform the requested operations.
+/// </summary>
+internal sealed class RecordingOutputCommandRuntime : IFreeShowOutputCommandRuntime
+{
+    private readonly HashSet<FreeShowSourceEffect> capabilities;
+    public string OutputId { get; }
+    public List<FreeShowSourceEffect> Executed { get; } = new();
+
+    public RecordingOutputCommandRuntime(string outputId,
+        IEnumerable<FreeShowSourceEffect> supported)
+    {
+        OutputId = outputId;
+        capabilities = new HashSet<FreeShowSourceEffect>(supported);
+    }
+
+    public bool SupportsSourceEffect(FreeShowSourceEffect effect) =>
+        capabilities.Contains(effect);
+
+    public void AddCapabilities(IEnumerable<FreeShowSourceEffect> effects)
+    {
+        foreach (var effect in effects) capabilities.Add(effect);
+    }
+
+    public Task ExecuteSourceEffectsAsync(
+        FreeShowOutputCommandPlan plan, CancellationToken cancellationToken = default)
+    {
+        if (plan.OutputId != OutputId ||
+            plan.RequiredEffects.Any(effect => !SupportsSourceEffect(effect)))
+            throw new NotSupportedException("Incomplete source-effect runtime");
+        cancellationToken.ThrowIfCancellationRequested();
+        Executed.AddRange(plan.RequiredEffects);
+        return Task.CompletedTask;
+    }
 }
