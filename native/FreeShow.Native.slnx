@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="FreeShow.Native.Core/FreeShow.Native.Core.csproj" />
+  <Project Path="FreeShow.Native.Rendering/FreeShow.Native.Rendering.csproj" />
+  <Project Path="FreeShow.Native.Operator/FreeShow.Native.Operator.csproj" />
+  <Project Path="FreeShow.Native.Probe/FreeShow.Native.Probe.csproj" />
+  <Project Path="FreeShow.Native.VisualProbe/FreeShow.Native.VisualProbe.csproj" />
+  <Project Path="FreeShow.Native.OperatorProbe/FreeShow.Native.OperatorProbe.csproj" />
+  <Project Path="FreeShow.Native.Checks/FreeShow.Native.Checks.csproj" />
+</Solution>
