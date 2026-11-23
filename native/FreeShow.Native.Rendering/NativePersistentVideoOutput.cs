@@ -1,4 +1,5 @@
 using Avalonia;
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -56,6 +57,7 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
     }
 
     public NativeSlidePresenter Lyrics => lyrics;
+    public NativeCueDispatchMetrics CueDispatchMetrics { get; } = new();
     public string PlayingVideoId => playback.CurrentVideoId;
     public bool IsVideoAttached => videoAttached;
     public long BackgroundTimeMs => player?.Time ?? -1;
@@ -82,7 +84,11 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
             throw new InvalidOperationException("Slide selection belongs to the Avalonia UI thread.");
         // Do not access the decoder or video view here. A shared persistent
         // video background must not be restarted during a lyric cue change.
-        return lyrics.Show(index);
+        var started = Stopwatch.GetTimestamp();
+        bool shown = lyrics.Show(index);
+        if (shown)
+            CueDispatchMetrics.Record(index, Stopwatch.GetElapsedTime(started));
+        return shown;
     }
 
     /// <summary>
