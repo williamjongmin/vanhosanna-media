@@ -1710,6 +1710,109 @@ using (var navShowJson = JsonDocument.Parse("""
               batch.OutputPlans["screen2"].Kind == FreeShowSlideAdvanceKind.RevealWithinSlide &&
               !batch.CanDispatchLive,
             "One active output at final slide cannot force another output to leave its current reveal");
+        // 0.0.24 — original playSlide lifecycle. These fake runtime
+        // adapters are CHECKS-ONLY: no real output action is installed.
+        var transitionController = new FreeShowOutputCommandCoordinator(config);
+        var transitionCapture = FreeShowOutputSnapshotBatch.Capture(
+            config, transitionController.States);
+        var transitionInspect = FreeShowMultiOutputAdvanceInspection.Prepare(
+            config, transitionController.States, context,
+            id => id == source.ShowId ? source : null,
+            FreeShowSlideAdvanceDirection.Next,
+            projectContent, projectContent.ItemAtOriginalIndex(0));
+        var transitionPlan = FreeShowSlideTransitionPlanner.Prepare(
+            config, transitionCapture, transitionInspect,
+            id => id == source.ShowId ? source : null);
+        Check(transitionPlan.IsSourcePrepared &&
+              transitionPlan.Targets.Count == 1 &&
+              transitionPlan.Targets[0].OutputId == "screen2" &&
+              transitionPlan.Targets[0].NavigationKind ==
+                  FreeShowSlideAdvanceKind.RevealWithinSlide,
+            "Original multi-output intent changes only output still revealing lyrics");
+
+        var noSlideRuntimes =
+            new Dictionary<string, IFreeShowSlideTransitionRuntime>();
+        var refusedTransition = await transitionController.DispatchSlideTransitionAsync(
+            transitionPlan, noSlideRuntimes);
+        Check(refusedTransition.Status == FreeShowSlideTransitionStatus.Refused &&
+              refusedTransition.OutputsAcknowledged == 0 &&
+              transitionController.States["screen2"].Revision == 0,
+            "No full FreeShow action/setOutput/updateOut runtime refuses before changing OutData");
+
+        var incompleteTransition = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases.Take(2));
+        var missingUpdateOut = await transitionController.DispatchSlideTransitionAsync(
+            transitionPlan, new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = incompleteTransition });
+        Check(missingUpdateOut.Status == FreeShowSlideTransitionStatus.Refused &&
+              incompleteTransition.Executed.Count == 0,
+            "Missing updateOut source phase blocks even a cached lyric-only transition");
+
+        var completeTransition = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases);
+        var completeTransitionAdapters =
+            new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = completeTransition };
+        var completeResult = await transitionController.DispatchSlideTransitionAsync(
+            transitionPlan, completeTransitionAdapters);
+        var acknowledgedSlide = ShowDocument.Property(
+            transitionController.States["screen2"].Snapshot(), "slide");
+        Check(completeResult.Succeeded &&
+              completeResult.OutputsAcknowledged == 1 &&
+              completeTransition.Executed.SequenceEqual(
+                  FreeShowSlideTransitionOrder.Phases) &&
+              ShowDocument.Property(acknowledgedSlide, "line").GetInt32() == 1 &&
+              ShowDocument.IsTrue(acknowledgedSlide, "itemClickReveal") &&
+              transitionController.States["screen2"].Revision == 1,
+            "Only all-acknowledged FreeShow phases commit complete output state once");
+        Check(transitionController.CheckSlideTransitionReadiness(
+              transitionPlan, completeTransitionAdapters).Any(
+                  x => x.Contains("changed")),
+            "Original slide plan from earlier OutData revision cannot be reused");
+
+        var afterFirstCapture = FreeShowOutputSnapshotBatch.Capture(
+            config, transitionController.States);
+        var afterFirstInspect = FreeShowMultiOutputAdvanceInspection.Prepare(
+            config, transitionController.States, context,
+            id => id == source.ShowId ? source : null,
+            FreeShowSlideAdvanceDirection.Next,
+            projectContent, projectContent.ItemAtOriginalIndex(0));
+        var afterFirstPlan = FreeShowSlideTransitionPlanner.Prepare(
+            config, afterFirstCapture, afterFirstInspect,
+            id => id == source.ShowId ? source : null);
+
+        var brokenTransition = new RecordingCompleteSlideTransitionRuntime(
+            "screen2", FreeShowSlideTransitionOrder.Phases)
+        {
+            FailAtPhase =
+                FreeShowSlideTransitionPhase.SetOriginalSlideWithFullOutputLifecycle
+        };
+        var brokenAdapters =
+            new Dictionary<string, IFreeShowSlideTransitionRuntime>
+            { ["screen2"] = brokenTransition };
+        var brokenResult = await transitionController.DispatchSlideTransitionAsync(
+            afterFirstPlan, brokenAdapters);
+        Check(brokenResult.Status == FreeShowSlideTransitionStatus.PartialExecution &&
+              brokenResult.OutputsAcknowledged == 0 &&
+              transitionController.UnreconciledSlideOutputs.Contains("screen2") &&
+              transitionController.States["screen2"].Revision == 1,
+            "A physical failure quarantines output without committing fictional state");
+
+        var replayAttempt = await transitionController.DispatchSlideTransitionAsync(
+            afterFirstPlan, completeTransitionAdapters);
+        Check(replayAttempt.Status == FreeShowSlideTransitionStatus.Refused &&
+              replayAttempt.Problems.Any(x => x.Contains("reconciliation")),
+            "Unreconciled physical slide output blocks replay of stale command");
+
+        var snapshotToReconcile = transitionController.States["screen2"].Snapshot();
+        var revisionToReconcile = transitionController.States["screen2"].Revision;
+        Check(await transitionController.SynchronizeAcknowledgedOutputAsync(
+              "screen2", snapshotToReconcile, revisionToReconcile) &&
+              transitionController.UnreconciledSlideOutputs.Count == 0 &&
+              transitionController.States["screen2"].Revision ==
+                  revisionToReconcile + 1,
+            "Only an authoritative full OutData sync removes physical output quarantine");
+
         var keyboardNavigation = new FreeShowKeyboardAdvanceInspector();
         var eventAt = DateTimeOffset.UnixEpoch.AddSeconds(30);
         var routed = keyboardNavigation.Inspect(
@@ -1965,4 +2068,60 @@ internal sealed class RecordingFreeShowTimerInventory : IFreeShowTimerInventoryA
     public bool HasCompleteInventory(string originalOutputId, bool includeOverlayTimers) =>
         verifiedSlides.Contains(originalOutputId) &&
         (!includeOverlayTimers || verifiedOverlays.Contains(originalOutputId));
+}
+
+
+/// <summary>
+/// Synthetic FreeShow output backend used ONLY by the unexecuted fixture
+/// suite. Never register this fake backend with an operator app.
+/// </summary>
+internal sealed class RecordingCompleteSlideTransitionRuntime :
+    IFreeShowSlideTransitionRuntime
+{
+    private readonly HashSet<FreeShowSlideTransitionPhase> supported;
+    public string OutputId { get; }
+    public FreeShowSlideTransitionPhase? FailAtPhase { get; set; }
+    public bool ReturnWrongSlide { get; set; }
+    public List<FreeShowSlideTransitionPhase> Executed { get; } = new();
+
+    public RecordingCompleteSlideTransitionRuntime(string outputId,
+        IEnumerable<FreeShowSlideTransitionPhase> phases)
+    {
+        OutputId = outputId;
+        supported = new HashSet<FreeShowSlideTransitionPhase>(phases);
+    }
+
+    public bool SupportsCompletePhase(
+        FreeShowSlideTransitionPhase phase,
+        FreeShowSlideTransitionTarget target) =>
+        target.OutputId == OutputId && supported.Contains(phase);
+
+    public Task ExecuteCompletePhaseAsync(
+        FreeShowSlideTransitionPhase phase,
+        FreeShowSlideTransitionTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!SupportsCompletePhase(phase, target))
+            throw new NotSupportedException("Synthetic source phase missing.");
+        if (FailAtPhase == phase)
+            throw new IOException("Synthetic physical slide phase failure");
+        Executed.Add(phase);
+        return Task.CompletedTask;
+    }
+
+    public Task<JsonElement> CaptureAcknowledgedOutDataAsync(
+        FreeShowSlideTransitionTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var original = System.Text.Json.Nodes.JsonNode.Parse(
+            target.PreviousOutData.GetRawText()) as System.Text.Json.Nodes.JsonObject ??
+            throw new InvalidDataException("Synthetic original OutData missing.");
+        original["slide"] = System.Text.Json.Nodes.JsonNode.Parse(
+            target.NextOutSlide.GetRawText());
+        if (ReturnWrongSlide)
+            ((System.Text.Json.Nodes.JsonObject)original["slide"]!)["index"] = 999;
+        return Task.FromResult(JsonSerializer.SerializeToElement(original));
+    }
 }
