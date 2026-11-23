@@ -87,6 +87,8 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 await runtime.RestoreGlobalAudioAsync(
                     plan.PlayingAudioData, plan.PlayingMetronome!.Value, cancellationToken);
                 cache.Clear();
+                foreach (var id in plan.OutputSnapshots.Keys)
+                    slideTransitionNeedsReconciliation.Remove(id);
                 return new(FreeShowRestoreStatus.Completed, restoredCount,
                     Array.Empty<string>());
             }
@@ -121,6 +123,10 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 originalOutData.ValueKind != JsonValueKind.Object)
                 return false;
             state.ReplaceAfterAcknowledgement(originalOutData);
+            // This method is for an authoritative external output snapshot,
+            // not a speculative UI value; it resolves prior partial action
+            // quarantine for this exact original source output.
+            slideTransitionNeedsReconciliation.Remove(outputId);
             return true;
         }
         finally { executeGate.Release(); }
@@ -224,6 +230,9 @@ public sealed partial class FreeShowOutputCommandCoordinator
             problems.Add("No original FreeShow action plan exists for this command.");
         foreach (var plan in plans)
         {
+            if (slideTransitionNeedsReconciliation.Contains(plan.OutputId))
+                problems.Add(plan.OutputId +
+                    ": previous slide transition requires physical state reconciliation.");
             if (!plan.CanPlan && plan.Warnings.Count == 0)
                 problems.Add(plan.OutputId + ": original action is not implemented.");
             if (plan.ExpectedNativeRevision.HasValue &&
