@@ -1713,6 +1713,63 @@ using (var navShowJson = JsonDocument.Parse("""
         Check(ctrlKey == null,
             "Original Ctrl+ArrowRight remains reserved for editor/navigation context");
 
+        // 0.0.22: source-consistent multi-output Preview snapshots and
+        // per-screen reveal state. This code is authored, NOT executed.
+        var capturedBatch = FreeShowOutputSnapshotBatch.Capture(config, state);
+        Check(capturedBatch.IsCoherent &&
+              capturedBatch.Outputs.Count == 2 &&
+              capturedBatch.StillMatches(state),
+            "Two original outputs are captured from one verified OutData revision set");
+
+        var previewFromCurrent = FreeShowOutputPreviewProjection.Prepare(
+            config, source, capturedBatch);
+        Check(previewFromCurrent.Count == 2 &&
+              previewFromCurrent.Any(x =>
+                x.Output.Id == "screen1" && x.LayoutIndex == 3) &&
+              previewFromCurrent.Any(x =>
+                x.Output.Id == "screen2" && x.LayoutIndex == 0),
+            "Read-only Preview uses captured actual slide indexes, not inferred selected show");
+
+        var frameCache = NativeRenderPlanner.Prepare(
+            source, "main", includeDisabled:true);
+        var outputRevealBatch = FreeShowOutputRevealBatchPlanner.Prepare(
+            config, styles, capturedBatch, (_, id, arrangement, slideIndex) =>
+                id == source.ShowId && arrangement == "main"
+                    ? frameCache.FirstOrDefault(x =>
+                        x.Source.LayoutIndex == slideIndex)
+                    : null);
+        Check(outputRevealBatch.CanPrewarmAll &&
+              outputRevealBatch.Targets.Count == 2 &&
+              outputRevealBatch.Targets["screen1"].Style.StyleLines == 2 &&
+              outputRevealBatch.Targets["screen2"].Style.StyleLines == 1 &&
+              !outputRevealBatch.CanDispatchLive,
+            "Multiscreen reveal preparation keeps distinct original style lines without output side effects");
+
+        var unavailableSourceFrame = FreeShowOutputRevealBatchPlanner.Prepare(
+            config, styles, capturedBatch, (outputId, _, _, _) =>
+                outputId == "screen1" ? null : frameCache[0]);
+        Check(!unavailableSourceFrame.CanPrewarmAll,
+            "One unavailable source renderer blocks the entire synchronized reveal prewarm");
+
+        // A new acknowledged command must invalidate the previous snapshot.
+        Check(state["screen2"].TryApply(new FreeShowShortcutAction(
+            NativeShortcutCommand.ClearSlide, "screen2")) &&
+              !capturedBatch.StillMatches(state),
+            "A later acknowledged slide clear invalidates old multiscreen preview batch");
+        var afterClear = FreeShowOutputSnapshotBatch.Capture(config, state);
+        var previewAfterClear = FreeShowOutputPreviewProjection.Prepare(
+            config, source, afterClear);
+        Check(afterClear.IsCoherent &&
+              previewAfterClear.Any(x =>
+                x.Output.Id == "screen2" && x.SourceFrame == null) &&
+              !FreeShowOutputRevealBatchPlanner.Prepare(
+                config, styles, afterClear, (_, id, arrangement, slideIndex) =>
+                    id == source.ShowId && arrangement == "main"
+                        ? frameCache.FirstOrDefault(x =>
+                            x.Source.LayoutIndex == slideIndex)
+                        : null).CanPrewarmAll,
+            "Cleared output remains blank and no stale lyric reveal is prepared for it");
+
 
         using var bothAtEnd = JsonDocument.Parse("""
 {"outputs":{
