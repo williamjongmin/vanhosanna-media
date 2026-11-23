@@ -151,8 +151,10 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
         }
         catch
         {
-            // No fake "playing" state is recorded after a decoder failure.
-            // The source .show and currently prepared lyrics stay untouched.
+            // Player may have stopped the previous media during replacement.
+            // Fail closed rather than leaving an invalid "playing" state.
+            try { await StopPlaybackCoreAsync(); }
+            catch { playback.MarkStopped(); }
             throw;
         }
         finally { mediaGate.Release(); }
