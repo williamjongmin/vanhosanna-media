@@ -38,3 +38,11 @@ All source FreeShow shows remain read-only. Preserve existing source and data, a
 4. Measure click-to-visible latency on the Dell OptiPlex 7490 across Main/Online/Stage and actual output hardware; include p50/p95/p99 and first-cue vs cached behavior.
 
 Status: committed code only. Build, runtime tests, screenshots and hardware benchmarks have not been verified.
+
+
+## 0.0.7 update — independent video host
+- The earlier still-image preview remains in `NativeSlidePresenter`; it has not been replaced or regressed by this new optional video-backed preview.
+- `NativePersistentVideoOutput` now owns a persistent LibVLC player and mounts `NativeSlidePresenter` as its transparent lyric overlay, so `ShowCue` contains no file access or video Play/Stop call.
+- `NativeFreeShowOutputSession` allows independent ownership per output ID. It is not yet the full FreeShow operator UI or stage/Online renderer.
+- See `VIDEO-OUTPUT-STATUS.md` for exact features, unsupported layers and developer-only invocation.
+- No build, pixel parity or target-hardware latency verification has been performed.
