@@ -51,8 +51,10 @@ public sealed class FreeShowOutputState
                 data["background"] = null;
                 return true;
             case NativeShortcutCommand.ClearOverlays:
-                data["overlays"] = new JsonArray();
-                return true;
+                // The original FreeShow clearOverlays() *preserves locked
+                // overlays*. The output data cannot tell which IDs are
+                // locked. Never erase them without original overlay metadata.
+                return false;
             case NativeShortcutCommand.ClearEffects:
                 data["effects"] = new JsonArray();
                 return true;
@@ -60,6 +62,31 @@ public sealed class FreeShowOutputState
                 return false; // Navigation/audio require the real controller.
         }
     }
+
+    /// <summary>
+    /// Original clearOverlays() retains every overlay whose definition is
+    /// locked, and clears effects separately. Call with complete locked-ID
+    /// metadata from the original overlays store; never infer it from OutData.
+    /// This method modifies only the in-memory clone.
+    /// </summary>
+    public void ClearOverlaysKeepingLocked(IReadOnlySet<string> lockedOverlayIds)
+    {
+        ArgumentNullException.ThrowIfNull(lockedOverlayIds);
+        var kept = Overlays.Where(lockedOverlayIds.Contains).ToArray();
+        data["overlays"] = new JsonArray(kept.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
+        data["effects"] = new JsonArray();
+    }
+
+    /// <summary>
+    /// Original clearScene() affects scene only, not the background or slide.
+    /// </summary>
+    public void ClearScene() => data["scene"] = null;
+
+    /// <summary>
+    /// Source clearTimers() clears the output transition state separately
+    /// from the actual runtime timers. Those runtime timers are not ported.
+    /// </summary>
+    public void ClearTransition() => data["transition"] = null;
 
     public void SetSlide(JsonElement originalFreeShowOutSlide)
     {
