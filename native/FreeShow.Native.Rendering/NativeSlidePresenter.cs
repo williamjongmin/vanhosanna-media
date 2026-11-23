@@ -4,6 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using FreeShow.Native.Core;
+using System.Globalization;
 
 namespace FreeShow.Native.Rendering;
 
@@ -58,6 +59,7 @@ public sealed class NativeSlidePresenter : ContentControl
             var text = new TextBlock
             {
                 FontSize = item.FontSize,
+                LineHeight = LineHeight(item.LineHeight,item.FontSize),
                 Foreground = Brush(item.Foreground, Brushes.White),
                 FontFamily = new FontFamily(item.FontFamily.Trim('"', '\'')),
                 FontWeight = Weight(item.FontWeight),
@@ -110,6 +112,17 @@ public sealed class NativeSlidePresenter : ContentControl
             VerticalAlignment = VerticalAlignment.Stretch,
             Child = canvas
         };
+    }
+
+    private static double LineHeight(string css, double fontSize)
+    {
+        // FreeShow Zoomed.svelte sets 1.1 as the default line-height.
+        if (CssDeclarations.ParseLength(css) is { Unit: CssUnit.Pixels } pixels)
+            return pixels.Value;
+        if (double.TryParse(css, NumberStyles.Float, CultureInfo.InvariantCulture, out var scale)
+            && scale > 0 && double.IsFinite(scale))
+            return scale * fontSize;
+        return 1.1 * fontSize;
     }
 
     private static IBrush Brush(string? color, IBrush fallback)
