@@ -17,7 +17,8 @@ public static class FreeShowRevealPrewarmSequence
         string originalOutputId,
         FreeShowRevealStyleContext initialStyle,
         int activeNormalOutputCount,
-        int maximumStates = 64)
+        int maximumStates = 64,
+        Func<string, string, bool?>? matchesSourceOutput = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(frame);
@@ -74,7 +75,8 @@ public static class FreeShowRevealPrewarmSequence
             var next = FreeShowSlideAdvancePlanner.Prepare(
                 source, current, originalOutputId,
                 FreeShowSlideAdvanceDirection.Next,
-                initialStyle.FewestActiveStyleLines);
+                initialStyle.FewestActiveStyleLines,
+                matchesSourceOutput);
 
             if (next.Kind != FreeShowSlideAdvanceKind.RevealWithinSlide)
             {
