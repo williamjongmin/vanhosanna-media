@@ -1217,6 +1217,131 @@ using (var liveAudio = JsonDocument.Parse("""
         "FreeShow already-cleared output is a no-op except reset of slide cache");
 }
 
+// 0.0.18 — runtime-bound timer cancellation and background-video
+// continuity. Core-only synthetic fixtures: NOT executed until Beta 2.
+{
+    var timers = new FreeShowOutputTimerRegistry();
+    var slide1 = new RecordingSourceTimer();
+    var slide2 = new RecordingSourceTimer();
+    var overlay1 = new RecordingSourceTimer();
+    timers.RegisterSlide("screen1", slide1);
+    timers.RegisterSlide("screen2", slide2);
+    timers.RegisterOverlay("screen1", "announcement", overlay1);
+
+    var inventory = new RecordingFreeShowTimerInventory();
+    inventory.Allow("screen1", false);
+    var bridge = new FreeShowTimerSourceEffects(timers, inventory);
+    Check(!bridge.CanCancel(["screen1","screen2"], false) &&
+          !bridge.CanCancel(["screen1"], true),
+        "No native timer is declared cleared without authoritative scheduler inventory");
+
+    bool missingAuthorityRefused = false;
+    try { await bridge.CancelAsync(["screen1","screen2"], false); }
+    catch (NotSupportedException) { missingAuthorityRefused = true; }
+    Check(missingAuthorityRefused && !slide1.Cancelled && !slide2.Cancelled &&
+          !overlay1.Cancelled,
+        "Incomplete multi-screen inventory prevents touching any registered timer");
+
+    inventory.Allow("screen2", false);
+    using var settingsForTimer = JsonDocument.Parse("""
+{"outputs":{"screen1":{"name":"Main","enabled":true,"active":true,
+"bounds":{"width":1920,"height":1080},"out":{"slide":{"id":"test"}}}}}
+""");
+    var configuration = FreeShowOutputConfiguration.Parse(settingsForTimer.RootElement);
+    var f2Plan = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "screen1"),
+        configuration);
+    var hooks = bridge.CreateSlideClearHooks("screen1");
+    Check(hooks.ContainsKey(FreeShowSourceEffect.CancelNextSlideTimers),
+        "Native source F2 effect is connected to registered real timer cancellation handle");
+    await hooks[FreeShowSourceEffect.CancelNextSlideTimers](
+        f2Plan, CancellationToken.None);
+    Check(slide1.Cancelled && !slide2.Cancelled && !overlay1.Cancelled &&
+          timers.SlideTimerCount == 1 && timers.OverlayTimerCount == 1,
+        "F2 cancels exactly its output's next-slide timer without stopping overlay or another output");
+
+    inventory.Allow("screen1", true);
+    inventory.Allow("screen2", true);
+    var timerPhases = bridge.CreateClearAllTimerHooks();
+    var partialClearAll = new FreeShowCompositeClearAllRuntime(timerPhases);
+    Check(partialClearAll.SupportsCompleteSourceStep(
+          FreeShowClearAllStep.ClearNextSlideTimers) &&
+          partialClearAll.SupportsCompleteSourceStep(
+          FreeShowClearAllStep.ClearAllRemainingTimers) &&
+          !partialClearAll.SupportsCompleteSourceStep(
+          FreeShowClearAllStep.ClearGlobalAudio) &&
+          !partialClearAll.SupportsCompleteSourceStep(
+          FreeShowClearAllStep.ClearBackgrounds),
+        "Registering timer hooks never falsely enables audio or media Clear All stages");
+
+    using var originalTimerAudio = JsonDocument.Parse("[]");
+    var planContext = new FreeShowClearAllContext(
+        true, false, originalTimerAudio.RootElement, false);
+    var sourceForTimer = new FreeShowOutputCommandCoordinator(configuration);
+    // Manually supply original IDs to exercise the full timer phase factory;
+    // the actual Clear All plan comes from a real source configuration.
+    var clearPlan = sourceForTimer.PlanClearAll(planContext);
+    Check(clearPlan.IsReady, "Synthetic Clear All has a recognized output and authoritative audio state");
+    await partialClearAll.ExecuteCompleteSourceStepAsync(
+        FreeShowClearAllStep.ClearAllRemainingTimers, clearPlan);
+    Check(overlay1.Cancelled && timers.SlideTimerCount == 1 &&
+          timers.OverlayTimerCount == 0,
+        "Final Clear All timer phase cancels overlay timer without affecting an unrelated output");
+    Check((await bridge.CancelAsync(["screen2"], false)).CancelledSlideTimers == 1 &&
+          slide2.Cancelled, "Second output timer can be cancelled independently");
+}
+
+{
+    var outputVideo = new FreeShowMediaReference(
+        "loop-bg", "loop-bg.mp4", NativeMediaKind.Video,
+        Loop:true, Muted:true, default);
+    var layer = new NativeVideoLayer("output-background", outputVideo);
+    var cue = new NativeVideoCue(0, "verse", [layer], layer, []);
+    var ready = FreeShowBackgroundContinuity.Plan(
+        cue, "loop-bg", "loop-bg", media => "/copied/" + media.Path);
+    Check(ready.CanApply &&
+          ready.Decision == NativeBackgroundClearDecision.StopCurrentOutputVideo,
+        "Source F1 can stop only the exact, already playing output video");
+    Check(!FreeShowBackgroundContinuity.Plan(
+        cue, "loop-bg", "different-player", media => "/copied/" + media.Path).CanApply,
+        "Background clear never disposes an unowned persistent video decoder");
+    Check(!FreeShowBackgroundContinuity.Plan(
+        cue, "stale-output", "loop-bg", media => "/copied/" + media.Path).CanApply,
+        "Stale source background IDs refuse media clear instead of changing wrong output");
+
+    var styleVideo = new FreeShowMediaReference(
+        "style", "style.mp4", NativeMediaKind.Video, true, true, default);
+    var styleLayer = new NativeVideoLayer("style-background", styleVideo);
+    var styleOnly = new NativeVideoCue(0, "verse", [styleLayer], styleLayer, []);
+    var leaveStyle = FreeShowBackgroundContinuity.Plan(
+        styleOnly, "", "style", media => "/copied/" + media.Path);
+    Check(leaveStyle.CanApply &&
+          leaveStyle.Decision == NativeBackgroundClearDecision.NoChange,
+        "F1 on empty active background must not restart or stop independent style video");
+
+    var twoVideos = new NativeVideoCue(
+        0, "verse", [styleLayer, layer], null, []);
+    Check(!FreeShowBackgroundContinuity.Plan(
+        twoVideos, "loop-bg", "loop-bg", media => "/copied/" + media.Path).CanApply,
+        "Single-decoder native output rejects simultaneous style and active video layers");
+
+    var imageLayer = new NativeVideoLayer("output-background",
+        new FreeShowMediaReference(
+            "image-bg", "image-bg.png", NativeMediaKind.Image, false, false, default));
+    var imageCue = new NativeVideoCue(0, "verse", [imageLayer], null, []);
+    Check(!FreeShowBackgroundContinuity.Plan(
+        imageCue, "image-bg", "", media => null).CanApply,
+        "Incomplete still-background compositor cannot claim source F1 media parity");
+    var unsupportedOptions = new FreeShowMediaReference(
+        "video-no-loop", "one-shot.mp4", NativeMediaKind.Video,
+        Loop:false, Muted:true, default);
+    var optionsCue = new NativeVideoCue(0, "verse",
+        [new NativeVideoLayer("output-background", unsupportedOptions)], null, []);
+    Check(!FreeShowBackgroundContinuity.Plan(
+        optionsCue, "video-no-loop", "video-no-loop", media => "/copied/one-shot.mp4").CanApply,
+        "Fixed-loop prototype cannot falsely implement original one-shot video playback");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
@@ -1348,4 +1473,21 @@ internal sealed class RecordingSourceClearAllRuntime : IFreeShowClearAllRuntime
         Executed.Add(step);
         return Task.CompletedTask;
     }
+}
+
+
+internal sealed class RecordingFreeShowTimerInventory : IFreeShowTimerInventoryAuthority
+{
+    private readonly HashSet<string> verifiedSlides = new(StringComparer.Ordinal);
+    private readonly HashSet<string> verifiedOverlays = new(StringComparer.Ordinal);
+
+    public void Allow(string outputId, bool includeOverlays)
+    {
+        verifiedSlides.Add(outputId);
+        if (includeOverlays) verifiedOverlays.Add(outputId);
+    }
+
+    public bool HasCompleteInventory(string originalOutputId, bool includeOverlayTimers) =>
+        verifiedSlides.Contains(originalOutputId) &&
+        (!includeOverlayTimers || verifiedOverlays.Contains(originalOutputId));
 }
