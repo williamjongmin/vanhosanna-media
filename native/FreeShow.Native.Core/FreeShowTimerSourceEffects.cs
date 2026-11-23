@@ -100,6 +100,21 @@ public sealed class FreeShowTimerSourceEffects
                     await CancelAsync(plan.ActiveOutputIds, true, token);
                 }
         };
+    /// <summary>
+    /// A timer-only runtime intentionally lacks all five non-timer phases.
+    /// Its plan-dependent readiness also refuses the full timer phase if
+    /// even one output lacks an authoritative overlay timer inventory.
+    /// </summary>
+    public FreeShowCompositeClearAllRuntime CreatePartialClearAllRuntime() =>
+        new(CreateClearAllTimerHooks(), (step, plan) =>
+            step switch
+            {
+                FreeShowClearAllStep.ClearNextSlideTimers =>
+                    CanCancel(plan.ActiveOutputIds, false),
+                FreeShowClearAllStep.ClearAllRemainingTimers =>
+                    CanCancel(plan.ActiveOutputIds, true),
+                _ => false
+            });
 }
 
 /// <summary>
@@ -107,31 +122,39 @@ public sealed class FreeShowTimerSourceEffects
 /// handler makes the entire operation unexecutable. This does not fabricate
 /// video or audio implementations and cannot control any output on its own.
 /// </summary>
-public sealed class FreeShowCompositeClearAllRuntime : IFreeShowClearAllRuntime
+public sealed class FreeShowCompositeClearAllRuntime : IFreeShowClearAllPlanReadiness
 {
     private readonly IReadOnlyDictionary<FreeShowClearAllStep,
         Func<FreeShowClearAllPlan, CancellationToken, Task>> handlers;
+    private readonly Func<FreeShowClearAllStep, FreeShowClearAllPlan, bool>? readiness;
 
     public FreeShowCompositeClearAllRuntime(
         IReadOnlyDictionary<FreeShowClearAllStep,
-            Func<FreeShowClearAllPlan, CancellationToken, Task>> completeHandlers)
+            Func<FreeShowClearAllPlan, CancellationToken, Task>> completeHandlers,
+        Func<FreeShowClearAllStep, FreeShowClearAllPlan, bool>? planReadiness = null)
     {
         ArgumentNullException.ThrowIfNull(completeHandlers);
         handlers = new Dictionary<FreeShowClearAllStep,
             Func<FreeShowClearAllPlan, CancellationToken, Task>>(completeHandlers);
+        readiness = planReadiness;
     }
 
     public bool SupportsCompleteSourceStep(FreeShowClearAllStep step) =>
         handlers.ContainsKey(step);
+
+    public bool CanExecuteSourceStep(FreeShowClearAllStep step, FreeShowClearAllPlan plan) =>
+        SupportsCompleteSourceStep(step) && plan.IsReady &&
+        (readiness?.Invoke(step, plan) ?? true);
 
     public Task ExecuteCompleteSourceStepAsync(FreeShowClearAllStep step,
         FreeShowClearAllPlan plan, CancellationToken cancellationToken = default)
     {
         if (!plan.IsReady)
             throw new InvalidOperationException("FreeShow Clear All plan is not ready.");
-        if (!handlers.TryGetValue(step, out var handler))
+        if (!handlers.TryGetValue(step, out var handler) ||
+            !CanExecuteSourceStep(step, plan))
             throw new NotSupportedException(
-                "Complete original FreeShow Clear All step is not installed: " + step);
+                "Complete original FreeShow step is unavailable for selected outputs: " + step);
         return handler(plan, cancellationToken);
     }
 }
