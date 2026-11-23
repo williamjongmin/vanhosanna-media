@@ -56,6 +56,40 @@ public static class FreeShowMediaLookup
     }
 
     /// <summary>
+    /// Resolve a local video path for native decoding. Never accept a remote URL,
+    /// media ID without a file, or an unsupported media kind as a video.
+    /// </summary>
+    public static string? ExistingLocalVideoPath(
+        FreeShowMediaReference media, string freeShowDataRoot)
+    {
+        if (media.Kind != NativeMediaKind.Video) return null;
+        return ExistingLocalMediaPath(media.Path, freeShowDataRoot);
+    }
+
+    private static string? ExistingLocalMediaPath(string path, string dataRoot)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            if (uri.IsFile) path = uri.LocalPath;
+            else if (uri.Scheme is "http" or "https") return null;
+        }
+
+        try
+        {
+            if (!Path.IsPathFullyQualified(path))
+                path = Path.Combine(dataRoot, path);
+            var full = Path.GetFullPath(path);
+            return File.Exists(full) ? full : null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+                   or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Resolve only a real local still image, for the prototype bitmap layer.
     /// Other source references remain in the media metadata for later engines.
     /// </summary>
