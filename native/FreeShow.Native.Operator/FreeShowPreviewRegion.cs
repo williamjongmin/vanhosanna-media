@@ -85,6 +85,18 @@ public sealed class FreeShowPreviewRegion : UserControl
     public void SetLanguage(string originalLocale) =>
         clears.SetLanguage(originalLocale);
 
+    /// <summary>
+    /// Display the original Restore control when a complete original
+    /// outputCache snapshot is supplied. The internal read-only probe never
+    /// supplies a live restore backend, so Restore stays disabled.
+    /// </summary>
+    public void BindRestoreCache(
+        FreeShowOutputRestoreCache cache,
+        DateTimeOffset savedAt,
+        IFreeShowOutputRestoreRuntime? completeRuntime = null,
+        Func<DateTimeOffset>? clock = null) =>
+        clears.BindRestore(cache, savedAt, completeRuntime, clock);
+
     public void UpdateClearState(JsonElement originalOverlayDefinitions = default,
         FreeShowAuxiliaryPreviewState? runtime = null)
     {
