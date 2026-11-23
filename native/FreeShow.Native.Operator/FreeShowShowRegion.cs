@@ -31,14 +31,25 @@ public sealed class FreeShowShowRegion : UserControl
     public FreeShowSlideCards Slides { get; }
     public string ShowId { get; }
 
-    public FreeShowShowRegion(ShowDocument source)
+    public FreeShowShowRegion(ShowDocument source, string? projectLayoutId = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ShowId = source.ShowId;
         Slides = new FreeShowSlideCards(source);
+        string effectiveLayoutId = source.ActiveLayoutId;
+        // project.ts openProjectItem honors the saved per-item layout, only
+        // when that arrangement still exists in the selected source show.
+        if (!string.IsNullOrEmpty(projectLayoutId) &&
+            ShowDocument.Property(source.Layouts, projectLayoutId).ValueKind ==
+                System.Text.Json.JsonValueKind.Object)
+        {
+            effectiveLayoutId = projectLayoutId;
+            if (effectiveLayoutId != source.ActiveLayoutId)
+                Slides.LoadLayout(effectiveLayoutId);
+        }
         title.Text = source.Name;
 
-        var currentLayout = source.GetLayout(source.ActiveLayoutId);
+        var currentLayout = source.GetLayout(effectiveLayoutId);
         var layoutTitle = ShowDocument.String(currentLayout, "name");
         var layouts = source.Layouts.EnumerateObject().ToArray();
         arrangement.Text = layouts.Length > 1 ? layoutTitle : "";
