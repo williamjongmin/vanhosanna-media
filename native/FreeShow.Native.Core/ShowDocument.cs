@@ -69,7 +69,7 @@ public sealed class ShowDocument
     /// FreeShow layout order: each parent layout entry followed by children listed in
     /// Show.slides[parentId].children. Child-specific settings come from
     /// Layout.slides[parentIndex].children[childId], not the parent layout entry.
-    /// Entries with missing slides are excluded, as FreeShow's ref() does.
+    /// Missing children are excluded but still consume a layoutIndex, mirroring ref().
     /// </summary>
     public IReadOnlyList<LayoutEntry> ReadLayoutEntries(string? layoutId = null)
     {
@@ -80,6 +80,7 @@ public sealed class ShowDocument
             throw new InvalidDataException("Selected FreeShow layout is missing or invalid: " + selected);
 
         var result = new List<LayoutEntry>();
+        int layoutIndex = -1;
         for (int sourceIndex = 0; sourceIndex < entries.GetArrayLength(); sourceIndex++)
         {
             var rawParent = entries[sourceIndex];
@@ -89,7 +90,7 @@ public sealed class ShowDocument
             if (parent.ValueKind != JsonValueKind.Object) continue;
 
             bool parentDisabled = IsTrue(rawParent, "disabled");
-            int parentIndex = result.Count;
+            int parentIndex = ++layoutIndex;
             result.Add(new LayoutEntry(parentIndex, parentId, parentDisabled, rawParent, parent,
                 null, sourceIndex, -1, false));
 
@@ -98,10 +99,11 @@ public sealed class ShowDocument
             int childIndex = 0;
             foreach (var childId in ReadChildIds(children))
             {
+                layoutIndex++;
                 var child = GetSlide(childId);
                 if (child.ValueKind != JsonValueKind.Object) { childIndex++; continue; }
                 var childOverrides = Property(Property(rawParent, "children"), childId);
-                result.Add(new LayoutEntry(result.Count, childId, IsTrue(childOverrides, "disabled"),
+                result.Add(new LayoutEntry(layoutIndex, childId, IsTrue(childOverrides, "disabled"),
                     childOverrides, child, parentId, sourceIndex, childIndex, parentDisabled));
                 childIndex++;
             }
