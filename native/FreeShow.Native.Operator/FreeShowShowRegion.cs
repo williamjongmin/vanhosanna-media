@@ -93,9 +93,10 @@ public sealed class FreeShowShowRegion : UserControl
         // A project arrangement may differ from the .show active layout.
         // Require the inspected output to name that arrangement explicitly.
         var requested = ShowDocument.String(originalOutSlide, "layout");
-        if (requested.Length > 0 && requested != Slides.LayoutId)
+        if ((requested.Length > 0 && requested != Slides.LayoutId) ||
+            (requested.Length == 0 && Slides.LayoutId != sourceShow.ActiveLayoutId))
             return new(FreeShowSlideAdvanceKind.Refused, "", "", null,
-                default, "The operator is displaying a different source arrangement.", true);
+                default, "Output arrangement does not match the operator's selected source layout.", true);
         return FreeShowSlideAdvancePlanner.Prepare(
             sourceShow, originalOutSlide, originalOutputId, direction,
             minimumStyleLines, bindingResolver);
