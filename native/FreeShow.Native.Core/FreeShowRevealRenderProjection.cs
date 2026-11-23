@@ -88,6 +88,22 @@ public static class FreeShowRevealRenderProjection
             if (itemStart.HasValue && itemEnd.HasValue)
                 lines = lines.Where(HasSourceText).ToArray();
 
+            // Original TextboxLines.svelte falls back to the final
+            // possible window if this particular item is shorter than the
+            // output-wide maximum text item. It does not simply go blank.
+            if (itemStart.HasValue && itemEnd.HasValue &&
+                lines.Count > 0 && itemStart.Value >= lines.Count)
+            {
+                int windowSize = itemEnd.Value - itemStart.Value;
+                if (windowSize > 0)
+                {
+                    int last = lines.Count - 1;
+                    int first = last - last % windowSize;
+                    itemStart = first;
+                    itemEnd = first + windowSize;
+                }
+            }
+
             IReadOnlyList<SlideLine> visible = itemStart.HasValue && itemEnd.HasValue
                 ? lines.Where((_, i) => i >= itemStart.Value && i < itemEnd.Value).ToArray()
                 : lines;
