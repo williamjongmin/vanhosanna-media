@@ -74,6 +74,16 @@ public sealed class NativeSlidePresenter : ContentControl
                 ClipToBounds = true
             };
 
+            if (item.Shadow is { } shadow && Color.TryParse(shadow.Color, out var shadowColor))
+                text.Effect = new DropShadowEffect
+                {
+                    OffsetX = shadow.OffsetX,
+                    OffsetY = shadow.OffsetY,
+                    BlurRadius = shadow.BlurRadius,
+                    Color = shadowColor,
+                    Opacity = 1
+                };
+
             // Text runs remain individual Avalonia inlines, so original
             // bold/italic/foreground differences survive conversion.
             bool firstLine = true;
