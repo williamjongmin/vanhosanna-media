@@ -372,12 +372,15 @@ using (var liveSettings = JsonDocument.Parse("""
     Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearBackground, "worship"))
         && !state.HasActiveBackground && state.Overlays.Count == 2,
         "F1 clears active output background without touching other layers");
-    Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "worship"))
-        && state.Overlays.Count == 0 && state.Effects.Count == 1,
-        "F3 overlay action leaves effects for its separate action");
+    Check(!state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "worship"))
+        && state.Overlays.Count == 2,
+        "Locked overlays cannot be cleared blindly without original metadata");
+    state.ClearOverlaysKeepingLocked(new HashSet<string> { "announcement" });
+    Check(state.Overlays.SequenceEqual(["announcement"]) && state.Effects.Count == 0,
+        "Original F3 preserves locked overlays while clearing effects");
     Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearEffects, "worship"))
         && state.Effects.Count == 0,
-        "F3 effect action clears effects");
+        "F3 effects clearing is independent and idempotent");
     Check(!state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.Next, "worship"))
         && !state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "different")),
         "Unported project navigation and foreign-output commands never silently execute");
