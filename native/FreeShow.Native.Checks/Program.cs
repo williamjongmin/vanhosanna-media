@@ -349,6 +349,47 @@ Check(router.Route(new NativeShortcutInput("F5", at.AddSeconds(11),
     OutputLocked:true), activeIds).Count == 0,
     "Locked outputs do not accept advancement in Native");
 
+// FreeShow OutData stores background, slide, effects, and overlays as
+// independent fields. F1/F2/F3 must not accidentally clear each other.
+using (var liveSettings = JsonDocument.Parse("""
+{"outputs":{"worship":{"name":"Primary","enabled":true,"active":true,
+"bounds":{"width":1920,"height":1080,"x":0,"y":0},
+"out":{"background":{"path":"loop.mp4","type":"video"},
+"slide":{"id":"song123","index":2},
+"overlays":["offering","announcement"],"effects":["vignette"],
+"scene":{"id":"stage-scene"},"keepUnknown":{"future":true}}
+}}}
+"""))
+{
+    var profile = FreeShowOutputConfiguration.Parse(liveSettings.RootElement).Find("worship")!;
+    var state = new FreeShowOutputState(profile);
+    var snapshot = state.Snapshot().GetRawText();
+    Check(state.HasActiveBackground && state.HasSlide && state.Overlays.Count == 2
+        && state.Effects.Count == 1, "Original OutData layers are independently preserved");
+    Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "worship"))
+        && !state.HasSlide && state.HasActiveBackground && state.Overlays.Count == 2,
+        "F2 clears slide while preserving video, overlays and effects");
+    Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearBackground, "worship"))
+        && !state.HasActiveBackground && state.Overlays.Count == 2,
+        "F1 clears active output background without touching other layers");
+    Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "worship"))
+        && state.Overlays.Count == 0 && state.Effects.Count == 1,
+        "F3 overlay action leaves effects for its separate action");
+    Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearEffects, "worship"))
+        && state.Effects.Count == 0,
+        "F3 effect action clears effects");
+    Check(!state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.Next, "worship"))
+        && !state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "different")),
+        "Unported project navigation and foreign-output commands never silently execute");
+    Check(ShowDocument.Property(state.Snapshot(), "keepUnknown").ValueKind == JsonValueKind.Object
+        && ShowDocument.Property(state.Snapshot(), "scene").ValueKind == JsonValueKind.Object,
+        "Native OutData clone retains unknown metadata and scene state");
+    Check(profile.Raw.GetRawText().Contains("loop.mp4") &&
+        ShowDocument.Property(ShowDocument.Property(profile.Raw, "out"), "slide")
+            .ValueKind == JsonValueKind.Object,
+        "Mutating native state never edits the original FreeShow SETTINGS object");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
