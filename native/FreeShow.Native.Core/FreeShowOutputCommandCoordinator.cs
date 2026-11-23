@@ -56,6 +56,31 @@ public sealed class FreeShowOutputCommandCoordinator
         runtimes[runtime.OutputId] = runtime;
     }
 
+    /// <summary>
+    /// Preview ClearButtons.svelte uses clearOverlays(), which retains locked
+    /// overlays. This deliberately differs from the keyboard F3 code path,
+    /// which directly sets every overlay list to empty.
+    /// Scene / Clear All / timer remain unported and produce NO plan.
+    /// </summary>
+    public IReadOnlyList<FreeShowOutputCommandPlan> PlanPreviewClearAction(string category)
+    {
+        NativeShortcutCommand? command = category switch
+        {
+            "background" => NativeShortcutCommand.ClearBackground,
+            "slide" => NativeShortcutCommand.ClearSlide,
+            "overlays" => NativeShortcutCommand.ClearOverlays,
+            "audio" => NativeShortcutCommand.ClearAudioAndPlaylist,
+            _ => null
+        };
+        if (command == null) return Array.Empty<FreeShowOutputCommandPlan>();
+        var targetIds = category == "audio"
+            ? new[] { "" }
+            : configuration.GetActiveNormalOutputs().Select(o => o.Id).ToArray();
+        return targetIds.Select(id => FreeShowOutputCommandPlanner.Prepare(
+            new FreeShowShortcutAction(command.Value, id), configuration, overlays))
+            .ToArray();
+    }
+
     public IReadOnlyList<FreeShowOutputCommandPlan> PreviewShortcut(NativeShortcutInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
