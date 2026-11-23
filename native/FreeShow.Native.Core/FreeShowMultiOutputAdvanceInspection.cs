@@ -99,8 +99,12 @@ public static class FreeShowMultiOutputAdvanceInspection
                 activeProject, ShowDocument.Property(
                     currentStates[active[0].Id].Snapshot(), "slide"),
                 activeProjectItem, direction, focusMode, nextItemOnLastSlide);
-            return new(FreeShowMultiOutputAdvanceStatus.ProjectSelectionOnly,
-                plans, projectResult, []);
+            return projectResult.Status == FreeShowProjectAdvanceStatus.SelectProjectItem
+                ? new(FreeShowMultiOutputAdvanceStatus.ProjectSelectionOnly,
+                    plans, projectResult, Array.Empty<string>())
+                : new(FreeShowMultiOutputAdvanceStatus.AtShowBoundary,
+                    plans, projectResult,
+                    [projectResult.Reason ?? "No source project item can be selected."]);
         }
 
         if (atBoundary)
