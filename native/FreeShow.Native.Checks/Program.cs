@@ -1260,10 +1260,23 @@ using (var liveAudio = JsonDocument.Parse("""
           timers.SlideTimerCount == 1 && timers.OverlayTimerCount == 1,
         "F2 cancels exactly its output's next-slide timer without stopping overlay or another output");
 
+    // Before the source overlay timer inventory is complete, even a
+    // registered timer hook must NOT claim the final Clear All phase ready.
+    var timerOnlyBefore = bridge.CreatePartialClearAllRuntime();
+    using (var earlyAudio = JsonDocument.Parse("[]"))
+    {
+        var earlyConfig = FreeShowOutputConfiguration.Parse(settingsForTimer.RootElement);
+        var earlyController = new FreeShowOutputCommandCoordinator(earlyConfig);
+        var earlyPlan = earlyController.PlanClearAll(
+            new FreeShowClearAllContext(true, false, earlyAudio.RootElement, false));
+        Check(!timerOnlyBefore.CanExecuteSourceStep(
+              FreeShowClearAllStep.ClearAllRemainingTimers, earlyPlan),
+            "Per-plan source timer readiness rejects unknown overlay timer inventory");
+    }
     inventory.Allow("screen1", true);
     inventory.Allow("screen2", true);
     var timerPhases = bridge.CreateClearAllTimerHooks();
-    var partialClearAll = new FreeShowCompositeClearAllRuntime(timerPhases);
+    var partialClearAll = bridge.CreatePartialClearAllRuntime();
     Check(partialClearAll.SupportsCompleteSourceStep(
           FreeShowClearAllStep.ClearNextSlideTimers) &&
           partialClearAll.SupportsCompleteSourceStep(
@@ -1282,6 +1295,11 @@ using (var liveAudio = JsonDocument.Parse("""
     // the actual Clear All plan comes from a real source configuration.
     var clearPlan = sourceForTimer.PlanClearAll(planContext);
     Check(clearPlan.IsReady, "Synthetic Clear All has a recognized output and authoritative audio state");
+    Check(partialClearAll.CanExecuteSourceStep(
+          FreeShowClearAllStep.ClearAllRemainingTimers, clearPlan) &&
+          !partialClearAll.CanExecuteSourceStep(
+          FreeShowClearAllStep.ClearGlobalAudio, clearPlan),
+        "Source timer-only runtime exposes no fake media/audio phase");
     await partialClearAll.ExecuteCompleteSourceStepAsync(
         FreeShowClearAllStep.ClearAllRemainingTimers, clearPlan);
     Check(overlay1.Cancelled && timers.SlideTimerCount == 1 &&
