@@ -126,6 +126,9 @@ public sealed partial class FreeShowOutputCommandCoordinator
 
         foreach (var outputId in plan.ActiveOutputIds)
         {
+            if (slideTransitionNeedsReconciliation.Contains(outputId))
+                issues.Add("Original output " + outputId +
+                    " is quarantined after a partial source slide change.");
             if (!states.TryGetValue(outputId, out var current) ||
                 !plan.ExpectedRevisions.TryGetValue(outputId, out var revision) ||
                 current.Revision != revision)
