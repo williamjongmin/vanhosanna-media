@@ -68,6 +68,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.11 Source operator components:** original FreeShow top navigation tabs and SVG icon path geometry, English/Korean source labels, page registration wiring, show-title region and renderer-backed slide cards are implemented as partial Avalonia controls. Added a **read-only developer-only** operator comparison executable and a .NET 10 solution. Live click/output control remains disabled until the original complete actions/reveal/overlay semantics are available. Existing menu bar, project tree, media drawer, stage/editor/settings and exact UI styling remain incomplete. See `UI-COMPONENT-STATUS.md`; no runtime or visual parity verification has been performed.
 
+- **0.0.12 Projects / Preview:** the original `Config/projects.json` folder/project tree, per-project show/arrangement references, and multi-output `SETTINGS.outputs` preview metadata are now represented as read-only native models and Avalonia controls. The developer OperatorProbe can display left Projects and right Preview when supplied source folders/settings. Unported stage/media/capture views are not faked; actual project editing and full FreeShow output Preview controls remain unported. See `PROJECT-PREVIEW-STATUS.md`. No Windows build, synthetic test execution or physical latency measurement completed.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
