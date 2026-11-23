@@ -52,7 +52,7 @@ public sealed class FreeShowShortcutRouter
                 if (input.OutputLocked) return [];
                 return ids.SelectMany(x => new[]
                 {
-                    new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, x),
+                    new FreeShowShortcutAction(NativeShortcutCommand.ClearAllOverlaysForShortcut, x),
                     new FreeShowShortcutAction(NativeShortcutCommand.ClearEffects, x)
                 }).ToArray();
             case "F4":
@@ -95,7 +95,8 @@ public enum NativeShortcutOrigin { Keyboard, Action, ExternalController, OutputW
 public enum NativeShortcutCommand
 {
     Next, Previous, First, Last,
-    ClearSlide, ClearBackground, ClearOverlays, ClearEffects, ClearAudioAndPlaylist
+    ClearSlide, ClearBackground, ClearOverlays, ClearAllOverlaysForShortcut,
+    ClearEffects, ClearAudioAndPlaylist
 }
 
 public sealed record NativeShortcutInput(
