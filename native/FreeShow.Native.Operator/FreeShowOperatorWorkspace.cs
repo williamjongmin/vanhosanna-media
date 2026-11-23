@@ -68,6 +68,31 @@ public sealed class FreeShowOperatorWorkspace : UserControl
     public ContentControl DrawerToolsHost { get; } = new();
     public ContentControl TipbarHost { get; } = new();
 
+    private FreeShowTopBar? installedTopBar;
+
+    /// <summary>
+    /// Install the actual original-structure FreeShow top controls.
+    /// Only registered native page components are selectable; an unported
+    /// Editor/Stage/Settings screen is never silently substituted.
+    /// </summary>
+    public void InstallTopBar(FreeShowTopBar top)
+    {
+        ArgumentNullException.ThrowIfNull(top);
+        if (installedTopBar != null)
+            installedTopBar.PageRequested -= HandleTopNavigation;
+        installedTopBar = top;
+        top.CanOpenPage = page => portedPageRegions.ContainsKey(page);
+        top.PageRequested += HandleTopNavigation;
+        top.SetCurrentPage(state.Page);
+        TopHost.Content = top;
+    }
+
+    private void HandleTopNavigation(object? sender, FreeShowPageRequestedEventArgs e)
+    {
+        if (portedPageRegions.ContainsKey(e.PageId))
+            ChangePage(e.PageId);
+    }
+
     public FreeShowOperatorWorkspaceState State => state;
     public bool ProjectTimelineVisible { get; private set; }
 
@@ -100,6 +125,8 @@ public sealed class FreeShowOperatorWorkspace : UserControl
         ProjectTimelineHost.IsVisible = ProjectTimelineVisible && state.Page == "show";
         ConfigureRightPanel(state.RightPanelIsHorizontal);
         RefreshPageRegions();
+        installedTopBar?.SetCurrentPage(state.Page);
+        installedTopBar?.RefreshPageAvailability();
     }
 
     /// <summary>
@@ -114,6 +141,7 @@ public sealed class FreeShowOperatorWorkspace : UserControl
             throw new ArgumentException(
                 "Page is not mapped by original FreeShow MainLayout.svelte.", nameof(page));
         portedPageRegions[page] = content;
+        installedTopBar?.RefreshPageAvailability();
         if (state.Page == page) RefreshPageRegions();
     }
 
