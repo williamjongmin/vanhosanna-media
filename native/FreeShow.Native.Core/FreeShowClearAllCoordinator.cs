@@ -139,8 +139,10 @@ public sealed partial class FreeShowOutputCommandCoordinator
             issues.Add("Source-complete Clear All backend not installed.");
         else
             foreach (var step in FreeShowClearAllSteps.ExecuteInOriginalOrder)
-                if (!runtime.SupportsCompleteSourceStep(step))
-                    issues.Add("Missing original Clear All source step: " + step);
+                if (!runtime.SupportsCompleteSourceStep(step) ||
+                    runtime is IFreeShowClearAllPlanReadiness planAware &&
+                    !planAware.CanExecuteSourceStep(step, plan))
+                    issues.Add("Missing or unready original Clear All source step: " + step);
 
         return issues.AsReadOnly();
     }
@@ -354,6 +356,16 @@ public interface IFreeShowClearAllRuntime
     Task ExecuteCompleteSourceStepAsync(
         FreeShowClearAllStep step, FreeShowClearAllPlan plan,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Stronger per-plan Clear All preflight for the original active output IDs.
+/// A present timer/audio/media hook is not proof its source state is known.
+/// </summary>
+public interface IFreeShowClearAllPlanReadiness : IFreeShowClearAllRuntime
+{
+    bool CanExecuteSourceStep(
+        FreeShowClearAllStep step, FreeShowClearAllPlan plan);
 }
 
 public enum FreeShowClearAllStatus
