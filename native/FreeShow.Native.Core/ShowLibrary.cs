@@ -31,7 +31,7 @@ public static class ShowLibrary
                     Path.GetFileName(path), show.ShowId, show.Name,
                     show.ReadLayoutEntries().Count, warnings, null));
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException
                        or System.Text.Json.JsonException or ArgumentException)
             {
                 results.Add(new ShowLibraryResult(
