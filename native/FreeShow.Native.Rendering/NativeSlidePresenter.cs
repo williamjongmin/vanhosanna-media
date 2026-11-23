@@ -42,6 +42,16 @@ public sealed class NativeSlidePresenter : ContentControl
         }
     }
 
+    /// <summary>
+    /// F2: clear the currently displayed lyrics without disposing the next
+    /// prepared slides or touching the independently playing background.
+    /// </summary>
+    public void ClearVisible()
+    {
+        Content = null;
+        CurrentIndex = -1;
+    }
+
     public void ClearPrepared()
     {
         Content = null;
