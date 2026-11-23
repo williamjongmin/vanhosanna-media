@@ -47,6 +47,17 @@ public static class NativeRenderPlanner
             var height = css.Length("height")?.Resolve(1080) ?? 150;
             var size = css.Length("font-size")?.Resolve(1920) ?? 100;
             var opacity = css.Number("opacity") ?? 1;
+            // Zoomed.svelte supplies a default text-shadow of 2px 2px 10px black.
+            // Explicit `none` must override it. Complex CSS shadows stay diagnostic.
+            var shadow = css.Has("text-shadow")
+                ? CssTextShadow.Parse(css.Get("text-shadow"), out _) : new CssShadow(2, 2, 10, "#000000");
+            if (css.Has("text-shadow"))
+            {
+                CssTextShadow.Parse(css.Get("text-shadow"), out var shadowSupported);
+                if (!shadowSupported) warnings.Add("Unsupported CSS text-shadow: " + css.Get("text-shadow"));
+            }
+            if (item.Lines.SelectMany(line => line.Runs).Any(run => new CssDeclarations(run.Style).Has("text-shadow")))
+                warnings.Add("Per-run text-shadow overrides not yet supported.");
 
             if (width <= 0 || height <= 0 || size <= 0)
             {
@@ -63,7 +74,7 @@ public static class NativeRenderPlanner
 
             string? unknown = css.Values.Keys.FirstOrDefault(key =>
                 key is "transform" or "filter" or "backdrop-filter" or "clip-path" or "shape-outside"
-                or "text-shadow" or "-webkit-text-stroke" or "animation");
+                or "-webkit-text-stroke" or "animation");
             if (unknown != null)
                 warnings.Add("Not yet faithfully rendered CSS: " + unknown);
 
@@ -76,7 +87,7 @@ public static class NativeRenderPlanner
                 css.Get("text-align") is { Length: > 0 } alignment ? alignment :
                     alignCss.Get("text-align") is { Length: > 0 } lineAlignment ? lineAlignment : "center",
                 alignCss.Get("align-items") is { Length: > 0 } vertical ? vertical : "center",
-                css.Get("line-height"),
+                css.Get("line-height"), shadow,
                 css, item, frame));
         }
 
@@ -100,7 +111,7 @@ public sealed record NativeRect(double X,double Y,double Width,double Height);
 public sealed record NativeItemPlan(
     NativeRect Bounds, double FontSize, double Opacity, string Foreground, string FontFamily,
     string FontWeight, string FontStyle, string Alignment, string VerticalAlignment, string LineHeight,
-    CssDeclarations Style, SlideItem Source, SlideFrame Frame);
+    CssShadow? Shadow, CssDeclarations Style, SlideItem Source, SlideFrame Frame);
 public sealed record NativeFramePlan(
     SlideFrame Source, IReadOnlyList<NativeItemPlan> TextItems, IReadOnlyList<string> Unsupported)
 {
