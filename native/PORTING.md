@@ -22,28 +22,28 @@ Baseline: church-dev / package version 1.6.8-beta.5. The Electron implementation
 ## Verified source mappings (original FreeShow tree)
 | Native concept | Existing FreeShow source | Observed behavior |
 |---|---|---|
-| Show storage | \`src/electron/utils/files.ts\` (\`parseShow\`) | Each \`.show\` file is a JSON tuple \`[showId, Show]\` |
-| Show directory | \`src/electron/utils/files.ts\` (\`dataFolderNames\`) | \`<data root>/Shows/*.show\`; data root may be customized |
-| Data root | \`src/electron/utils/files.ts\` | Defaults to \`Documents/FreeShow\` or configured \`dataPath\` |
-| Show schema | \`src/types/Show.ts\` | Slides, layouts, media and unknown extension fields coexist |
-| Output slide ordering | \`src/frontend/components/helpers/shows.ts\` (\`layouts().ref()\`) | Parent layout entry followed by the source slide's child ID list |
-| Child layout overrides | \`src/frontend/components/helpers/shows.ts\` | Stored under \`layout.slides[parentIndex].children[childId]\` |
-| Rich text | \`src/types/Show.ts\` | Item → lines → rich text runs with individual style strings |
+| Show storage | `src/electron/utils/files.ts` (`parseShow`) | Each `.show` file is a JSON tuple `[showId, Show]` |
+| Show directory | `src/electron/utils/files.ts` (`dataFolderNames`) | `<data root>/Shows/*.show`; data root may be customized |
+| Data root | `src/electron/utils/files.ts` | Defaults to `Documents/FreeShow` or configured `dataPath` |
+| Show schema | `src/types/Show.ts` | Slides, layouts, media and unknown extension fields coexist |
+| Output slide ordering | `src/frontend/components/helpers/shows.ts` (`layouts().ref()`) | Parent layout entry followed by the source slide's child ID list |
+| Child layout overrides | `src/frontend/components/helpers/shows.ts` | Stored under `layout.slides[parentIndex].children[childId]` |
+| Rich text | `src/types/Show.ts` | Item → lines → rich text runs with individual style strings |
 
 ## Current code
-- \`FreeShow.Native.Core/ShowDocument.cs\`: read-only \`.show\` tuple parser with exact original byte preservation, active layout, parent/child expansion, and missing-slide diagnostics.
-- \`FreeShow.Native.Core/SlideProjection.cs\`: source-based, non-rendering slide projection. Preserves original JSON, text runs, per-item styles, and child overrides.
-- \`FreeShow.Native.Core/ShowLibrary.cs\`: read-only inspector for a caller-selected \`Shows\` folder. Never writes or deletes.
-- \`FreeShow.Native.Probe\`: command-line source inspector; no UI port yet.
-- \`FreeShow.Native.Checks\`: synthetic fixture checks for data ordering and losslessness. Fixtures are **not** real church data.
+- `FreeShow.Native.Core/ShowDocument.cs`: read-only `.show` tuple parser with exact original byte preservation, active layout, parent/child expansion, and missing-slide diagnostics.
+- `FreeShow.Native.Core/SlideProjection.cs`: source-based, non-rendering slide projection. Preserves original JSON, text runs, per-item styles, and child overrides.
+- `FreeShow.Native.Core/ShowLibrary.cs`: read-only inspector for a caller-selected `Shows` folder. Never writes or deletes.
+- `FreeShow.Native.Probe`: command-line source inspector; no UI port yet.
+- `FreeShow.Native.Checks`: synthetic fixture checks for data ordering and losslessness. Fixtures are **not** real church data.
 
 Run locally with .NET 10 SDK:
-\`\`\`powershell
+```powershell
 dotnet run --project native/FreeShow.Native.Probe -- --show "C:\...\YourSong.show"
 dotnet run --project native/FreeShow.Native.Probe -- --folder "$env:USERPROFILE\Documents\FreeShow\Shows"
 dotnet run --project native/FreeShow.Native.Checks
-\`\`\`
-If FreeShow uses a custom data directory, choose its actual \`Shows\` folder.
+```
+If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 **Status:** Code committed; compilation, fixture execution, church-data compatibility, GUI, physical latency and hardware decoding have not been verified. This code cannot yet replace the FreeShow application.
 
