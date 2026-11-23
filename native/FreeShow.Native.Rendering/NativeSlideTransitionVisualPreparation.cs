@@ -36,8 +36,8 @@ public static class NativeSlideTransitionVisualPreparation
         // Speculative text visibility preparation is separate from applying
         // the original setOutput()/updateOut() lifecycle. Only clone the
         // expected OutSlide field, keeping all previous source fields intact.
-        var frozen = new Dictionary<string, FreeShowCapturedOutput>(
-            plan.SourceCapture.Outputs, StringComparer.Ordinal);
+        var frozen = plan.SourceCapture.Outputs.ToDictionary(
+            pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         foreach (var target in plan.Targets)
         {
             if (!frozen.TryGetValue(target.OutputId, out var original) ||
