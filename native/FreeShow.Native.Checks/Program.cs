@@ -60,6 +60,66 @@ Check(css.Length("widthx") == null && css.Length("font-size") == null, "Missing 
 Check(CssDeclarations.ParseLength("calc(100% - 20px)") is null,
       "Unsupported CSS expressions are flagged, not silently guessed");
 
+// Exact ordinary-lyrics template subset from FreeShow mergeWithTemplate():
+// copy box styling, preserve source lyric strings and mixed bold formatting.
+using (var tempDoc = JsonDocument.Parse("""
+{
+  "name": "Basic lyric text",
+  "settings": {"mode":"default"},
+  "items": [
+    {
+      "type": "text",
+      "style": "top: 240px;left: 180px;width: 1560px;height: 540px;font-size: 72px;",
+      "align": "text-align: center;align-items: center;",
+      "lines": [{"align":"center","text":[{"value":"Template sample","style":"font-size: 72px;color: #ffff00;"}]}]
+    }
+  ]
+}
+"""))
+{
+    var template = new TemplateSelection("basic-lyrics", tempDoc.RootElement.Clone(),
+        "output-style", false, false);
+    var merged = FreeShowTemplateMerger.Apply(output[0], template);
+    Check(merged.WasApplied && merged.Unsupported.Count == 0,
+        "Native ordinary-lyrics template merge recognized");
+    Check(merged.Items[0].PlainText == output[0].Items[0].PlainText,
+        "Source Korean lyric text preserved under template");
+    Check(merged.Items[0].Style.Contains("top: 240px;") &&
+          merged.Items[0].Style.Contains("width: 1560px;"),
+        "Template textbox geometry replaces the source item geometry");
+    Check(merged.Items[0].Lines[0].Runs.Count == 2,
+        "Mixed rich-text runs preserved through template merge");
+    Check(merged.Items[0].Lines[0].Runs[0].Style.Contains("font-weight: bold;") &&
+          merged.Items[0].Lines[0].Runs[1].Style.Contains("font-weight: normal;"),
+        "Original mixed bold/normal emphasis is preserved after applying template style");
+    Check(merged.Items[0].Lines[0].Runs[1].Style.Contains("#ffff00"),
+        "Template color applies to a source with a single original color");
+    var mergedNative = NativeRenderPlanner.BuildFrame(output[0] with { Items = merged.Items });
+    Check(mergedNative.TextItems[0].Bounds.X == 180 &&
+          mergedNative.TextItems[0].Bounds.Y == 240 &&
+          mergedNative.TextItems[0].FontSize == 72,
+        "Merged template geometry enters the Avalonia native render plan");
+    Check(output[0].Items[0].Style == "font-size: 80px;",
+        "Original source frame remains unchanged by template rendering");
+}
+
+using (var unsupportedDoc = JsonDocument.Parse("""
+{
+ "name":"Scripture template",
+ "settings":{"mode":"scripture"},
+ "items":[{"type":"text","style":"font-size:88px;","lines":[{"text":[{"value":"{scripture_text}","style":""}]}]}]
+}
+"""))
+{
+    var selected = new TemplateSelection("scripture", unsupportedDoc.RootElement.Clone(),
+        "output-style", true, false);
+    var result = FreeShowTemplateMerger.Apply(output[0], selected);
+    Check(!result.WasApplied && result.Unsupported.Count > 0,
+        "Unimplemented scripture variable template reported instead of incorrectly merged");
+    Check(result.Items[0].PlainText == output[0].Items[0].PlainText,
+        "Unsupported dynamic template never mutates source or discards lyrics");
+}
+
 // Copy-only FreeShow edit/export checks. These operate on synthetic fixture
 // files in a temporary directory and never touch the user's church data.
 var noop = new FreeShowShowExport(show);
