@@ -1385,6 +1385,64 @@ using (var navShowJson = JsonDocument.Parse("""
 {
     var source = ShowDocument.Parse(System.Text.Encoding.UTF8.GetBytes(
         navShowJson.RootElement.GetRawText()));
+    // 0.0.20 — original output.getOutputLines and TextboxLines projection.
+    // No Avalonia controls or decoder are executed here.
+    var sourceFrame = NativeRenderPlanner.Prepare(source, "main", includeDisabled:true)
+        .First(x => x.Source.LayoutIndex == 0);
+    using (var initiallyHidden = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":0,"revealCount":0,"itemClickReveal":false}
+"""))
+    using (var firstRevealed = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":0,"revealCount":1,"itemClickReveal":true}
+"""))
+    using (var secondRevealed = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":0,
+ "line":1,"revealCount":2,"itemClickReveal":true}
+"""))
+    {
+        var style = new FreeShowRevealStyleContext(
+            StyleLines:1, FewestActiveStyleLines:1, HighestActiveLinePosition:0);
+        var hidden = FreeShowRevealRenderProjection.Prepare(
+            sourceFrame, initiallyHidden.RootElement, style);
+        Check(hidden.IsSupported && hidden.Visible.TextItems.Count == 0,
+            "Original clickReveal initially hides its text item without clearing the slide background");
+
+        var firstVisible = FreeShowRevealRenderProjection.Prepare(
+            sourceFrame, firstRevealed.RootElement, style);
+        Check(firstVisible.IsSupported &&
+              firstVisible.Visible.TextItems.Count == 1 &&
+              firstVisible.Visible.TextItems[0].Source.Lines.Count == 1 &&
+              firstVisible.Visible.TextItems[0].Source.Lines[0].Text == "A" &&
+              firstVisible.Window.RevealStart == 0 &&
+              firstVisible.Window.RevealEnd == 1,
+            "First clicked and line-revealed original lyric includes only first visible text line");
+
+        var secondVisible = FreeShowRevealRenderProjection.Prepare(
+            sourceFrame, secondRevealed.RootElement, style);
+        Check(secondVisible.IsSupported &&
+              secondVisible.Visible.TextItems.Count == 1 &&
+              secondVisible.Visible.TextItems[0].Source.Lines[0].Text == "B" &&
+              secondVisible.Visible.TextItems[0].Source.Lines.Count == 1,
+            "Increasing original revealCount advances the one-line window without duplicating text");
+
+        var unsupportedFaded = FreeShowRevealRenderProjection.Prepare(
+            sourceFrame, firstRevealed.RootElement,
+            style with { ShowAsFaded = true });
+        Check(!unsupportedFaded.IsSupported &&
+              unsupportedFaded.Unported.Count > 0,
+            "Unported FreeShow showAsFaded alpha composition never presents full reveal parity");
+
+        var unrelatedSourceIndex = JsonDocument.Parse("""
+{"id":"navigation-show-id","layout":"main","index":3,
+ "line":0,"revealCount":1,"itemClickReveal":true}
+""");
+        Check(!FreeShowRevealRenderProjection.Prepare(
+                sourceFrame, unrelatedSourceIndex.RootElement, style).IsSupported,
+            "Reveal projection refuses a state from another source slide index");
+        unrelatedSourceIndex.Dispose();
+    }
     var noSlide = JsonDocument.Parse("{}");
     var first = FreeShowSlideAdvancePlanner.Prepare(
         source, noSlide.RootElement, "screen1",
