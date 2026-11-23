@@ -94,7 +94,14 @@ public static class FreeShowSlideTransitionPlanner
                 continue;
             }
 
-            var layout = show.ReadLayoutEntries(layoutId);
+            IReadOnlyList<LayoutEntry> layout;
+            try { layout = show.ReadLayoutEntries(layoutId); }
+            catch (Exception error)
+            {
+                problems.Add("Original source layout could not be inspected: " +
+                    output.Id + ": " + error.Message);
+                continue;
+            }
             if (index >= layout.Count || layout[index].Index != index ||
                 layout[index].EffectiveDisabled)
             {
