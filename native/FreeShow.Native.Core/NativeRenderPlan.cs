@@ -16,6 +16,12 @@ public static class NativeRenderPlanner
         return frames.Select(Build).ToArray();
     }
 
+    /// <summary>
+    /// Builds a precomputed output plan from a source frame or a verified
+    /// template-merged clone. The original ShowDocument is never mutated.
+    /// </summary>
+    public static NativeFramePlan BuildFrame(SlideFrame frame) => Build(frame);
+
     private static NativeFramePlan Build(SlideFrame frame)
     {
         var warnings = new List<string>();
