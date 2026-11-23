@@ -35,6 +35,21 @@ public static class NativeRenderPlanner
                 continue;
             }
 
+            var fit = ShowDocument.String(item.Raw, "textFit");
+            if (fit.Length > 0 && fit != "none")
+                warnings.Add("Native autosize/textFit not implemented for this text box: " + fit);
+            if (ShowDocument.Property(item.Raw, "lineReveal").ValueKind == JsonValueKind.True
+                || ShowDocument.Property(item.Raw, "clickReveal").ValueKind == JsonValueKind.True)
+                warnings.Add("Text item reveal and click reveal not implemented.");
+            if (ShowDocument.Property(item.Raw, "chords").ValueKind == JsonValueKind.Object)
+                warnings.Add("Chord position and colors are not yet equivalent to FreeShow.");
+            if (ShowDocument.Property(item.Raw, "scrolling").ValueKind == JsonValueKind.Object)
+                warnings.Add("Text scrolling animations are not yet implemented.");
+            if (ShowDocument.Property(item.Raw, "conditions").ValueKind != JsonValueKind.Undefined
+                && ShowDocument.Property(item.Raw, "conditions").ValueKind != JsonValueKind.Null)
+                warnings.Add("Conditional text visibility not yet implemented.");
+            if (item.Lines.Any(line => line.Runs.Any(run => run.Text.Contains('{'))))
+                warnings.Add("Dynamic text placeholders need FreeShow variable resolution.");
             var css = new CssDeclarations(item.Style);
             var alignCss = new CssDeclarations(ShowDocument.String(item.Raw,"align"));
             string[] requiredLengths = ["left", "top", "width", "height", "font-size"];
