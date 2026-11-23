@@ -239,8 +239,13 @@ public sealed partial class FreeShowOutputCommandCoordinator
                 continue;
             }
             foreach (var effect in plan.RequiredEffects.Distinct())
-                if (!runtime.SupportsSourceEffect(effect))
-                    problems.Add(plan.OutputId + ": missing source-complete effect " + effect);
+            {
+                bool ready = runtime.SupportsSourceEffect(effect) &&
+                    (runtime is not IFreeShowOutputRuntimePlanReadiness dynamicRuntime ||
+                     dynamicRuntime.CanExecuteSourceEffect(effect, plan));
+                if (!ready)
+                    problems.Add(plan.OutputId + ": missing or not ready source effect " + effect);
+            }
         }
         return problems.AsReadOnly();
     }
@@ -332,6 +337,18 @@ public interface IFreeShowOutputCommandRuntime
     bool SupportsSourceEffect(FreeShowSourceEffect effect);
     Task ExecuteSourceEffectsAsync(FreeShowOutputCommandPlan plan,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Optional stricter preflight for runtime effects depending on the current
+/// FreeShow video cue, source Show ID or authoritative timer registry. Static
+/// SupportsSourceEffect alone cannot establish that the active media layer
+/// or live scheduler can execute a particular prepared output command.
+/// </summary>
+public interface IFreeShowOutputRuntimePlanReadiness : IFreeShowOutputCommandRuntime
+{
+    bool CanExecuteSourceEffect(
+        FreeShowSourceEffect effect, FreeShowOutputCommandPlan plan);
 }
 
 public enum FreeShowCommandResultStatus
