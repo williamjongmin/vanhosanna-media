@@ -22,6 +22,23 @@ public sealed class FreeShowClearButtons : UserControl
     private readonly StackPanel root = new() { Orientation = Orientation.Vertical, Spacing = 0 };
     private readonly Dictionary<string, Action> sourceCompatibleActions = new(StringComparer.Ordinal);
     private bool actualOutputControllerInstalled;
+    private string locale = "en";
+    private static readonly IReadOnlyDictionary<string, string> EnglishLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["all"] = "Clear all", ["scene"] = "Clear scene",
+            ["background"] = "Clear background", ["slide"] = "Clear slide",
+            ["overlays"] = "Clear overlays", ["audio"] = "Clear audio",
+            ["nextTimer"] = "Clear next slide timer"
+        };
+    private static readonly IReadOnlyDictionary<string, string> KoreanLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["all"] = "모두 지우기", ["scene"] = "장면 지우기",
+            ["background"] = "배경 지우기", ["slide"] = "슬라이드 지우기",
+            ["overlays"] = "오버레이 지우기", ["audio"] = "소리 지우기",
+            ["nextTimer"] = "다음 슬라이드 전환 타이머 지우기"
+        };
 
     public event EventHandler<FreeShowPreviewCategoryEventArgs>? CategorySelected;
     public string? SelectedCategory => navigation.SelectedCategory;
@@ -31,6 +48,12 @@ public sealed class FreeShowClearButtons : UserControl
         state = source ?? throw new ArgumentNullException(nameof(source));
         navigation.Update(state);
         Content = root;
+        Rebuild();
+    }
+
+    public void SetLanguage(string language)
+    {
+        locale = language.StartsWith("ko", StringComparison.OrdinalIgnoreCase) ? "ko" : "en";
         Rebuild();
     }
 
@@ -113,7 +136,7 @@ public sealed class FreeShowClearButtons : UserControl
             Opacity = entry.Presence == PreviewLayerPresence.Cleared ? 0.4
                 : entry.Presence == PreviewLayerPresence.Unknown ? 0.55 : 1.0
         };
-        ToolTip.SetTip(button, entry.SourceTranslationId +
+        ToolTip.SetTip(button, Label(entry.Id) +
             (entry.KeyboardHint.Length > 0 ? " [" + entry.KeyboardHint + "]" : "") +
             (!button.IsEnabled ? " — controller not installed or output locked" : ""));
         button.Click += (_, _) =>
@@ -152,7 +175,7 @@ public sealed class FreeShowClearButtons : UserControl
         return col;
     }
 
-    private static Control CreateMainButtonContent(FreeShowPreviewControl entry, bool text)
+    private Control CreateMainButtonContent(FreeShowPreviewControl entry, bool text)
     {
         var group = new StackPanel
         {
@@ -165,12 +188,16 @@ public sealed class FreeShowClearButtons : UserControl
         if (text)
             group.Children.Add(new TextBlock
             {
-                Text = entry.Id is "all" ? "Clear all" : "Clear scene",
+                Text = Label(entry.Id),
                 VerticalAlignment = VerticalAlignment.Center,
                 FontSize = 12
             });
         return group;
     }
+
+    private string Label(string category) =>
+        (locale == "ko" ? KoreanLabels : EnglishLabels).TryGetValue(category, out var label)
+            ? label : category;
 
     private bool CanActuallyClear(FreeShowPreviewControl entry) =>
         actualOutputControllerInstalled && !state.OutputLocked &&
