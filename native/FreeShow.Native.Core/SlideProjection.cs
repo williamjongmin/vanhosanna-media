@@ -17,48 +17,57 @@ public static class SlideProjection
         {
             if (!includeDisabled && slide.EffectiveDisabled) continue;
 
-            var items = new List<SlideItem>();
-            if (slide.Items.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in slide.Items.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-                    var lines = new List<SlideLine>();
-                    var rawLines = ShowDocument.Property(item, "lines");
-                    if (rawLines.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var line in rawLines.EnumerateArray())
-                        {
-                            if (line.ValueKind != JsonValueKind.Object) continue;
-                            var runs = new List<TextRun>();
-                            var text = ShowDocument.Property(line, "text");
-                            if (text.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (var run in text.EnumerateArray())
-                                {
-                                    if (run.ValueKind != JsonValueKind.Object) continue;
-                                    runs.Add(new TextRun(
-                                        ShowDocument.String(run, "value"),
-                                        ShowDocument.String(run, "style"), run));
-                                }
-                            }
-                            lines.Add(new SlideLine(runs.AsReadOnly(), line));
-                        }
-                    }
-                    items.Add(new SlideItem(
-                        ShowDocument.String(item, "type"),
-                        ShowDocument.String(item, "style"),
-                        ShowDocument.String(item, "language"),
-                        lines.AsReadOnly(), item));
-                }
-            }
+            var items = ReadItems(slide.Items);
             result.Add(new SlideFrame(
                 slide.Index, slide.SlideId, slide.IsChild, slide.ParentSlideId,
                 slide.EffectiveDisabled, slide.Group, ShowDocument.String(slide.Slide, "notes"),
-                items.AsReadOnly(), slide.RawEntry, slide.Slide));
+                items, slide.RawEntry, slide.Slide));
         }
         return result.AsReadOnly();
     }
+    /// <summary>
+    /// Reuse the exact Show.ts line/run decoder for source slides and temporary
+    /// output-only template merges. No changes are written back to the .show file.
+    /// </summary>
+    public static IReadOnlyList<SlideItem> ReadItems(JsonElement rawItems)
+    {
+        var items = new List<SlideItem>();
+        if (rawItems.ValueKind != JsonValueKind.Array) return items.AsReadOnly();
+        foreach (var item in rawItems.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            var lines = new List<SlideLine>();
+            var rawLines = ShowDocument.Property(item, "lines");
+            if (rawLines.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var line in rawLines.EnumerateArray())
+                {
+                    if (line.ValueKind != JsonValueKind.Object) continue;
+                    var runs = new List<TextRun>();
+                    var text = ShowDocument.Property(line, "text");
+                    if (text.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var run in text.EnumerateArray())
+                        {
+                            if (run.ValueKind != JsonValueKind.Object) continue;
+                            runs.Add(new TextRun(
+                                ShowDocument.String(run, "value"),
+                                ShowDocument.String(run, "style"), run));
+                        }
+                    }
+                    lines.Add(new SlideLine(runs.AsReadOnly(), line));
+                }
+            }
+            items.Add(new SlideItem(
+                ShowDocument.String(item, "type"),
+                ShowDocument.String(item, "style"),
+                ShowDocument.String(item, "language"),
+                lines.AsReadOnly(), item));
+        }
+        return items.AsReadOnly();
+    }
+
+
 }
 
 public sealed record TextRun(string Text, string Style, JsonElement Raw);
