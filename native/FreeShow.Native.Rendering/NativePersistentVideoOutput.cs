@@ -113,6 +113,21 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
         FreeShowRevealStyleContext style) =>
         !closing && lyrics.HasPrewarmedReveal(cue, outSlide, style);
 
+    public bool IsPresentingPrewarmedReveal(
+        int cue, System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Native visual acknowledgment belongs to the UI thread.");
+        return !closing && (videoAttached
+            ? ReferenceEquals(Content, videoView) &&
+              ReferenceEquals(videoView.Content, videoOverlay) &&
+              ReferenceEquals(videoOverlay.Child, lyrics)
+            : ReferenceEquals(Content, fallbackSurface) &&
+              ReferenceEquals(fallbackSurface.Child, lyrics)) &&
+        lyrics.IsPresentingPrewarmedReveal(cue, outSlide, style);
+    }
+
     /// <summary>
     /// Swap a prebuilt reveal view only. Like ShowCue, this must never touch
     /// LibVLC, seek video or allocate new lyric controls in the hot path.

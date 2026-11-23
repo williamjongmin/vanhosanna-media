@@ -230,6 +230,23 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
         return null;
     }
 
+    /// <summary>
+    /// Acknowledges the exact output-owned selected lyric control. It does
+    /// not claim that a window is visible or that a physical monitor has
+    /// scanned out the frame; those require Windows/hardware validation.
+    /// </summary>
+    public bool IsPresentingPrewarmedReveal(
+        System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style)
+    {
+        if (disposed) return false;
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Native output acknowledgment belongs to UI thread.");
+        int? cue = FindPreparedRevealCue(outSlide);
+        return cue.HasValue && CurrentCue == cue.Value &&
+            Visual.IsPresentingPrewarmedReveal(cue.Value, outSlide, style);
+    }
+
     public bool ShowCue(int index)
     {
         if (disposed) return false;

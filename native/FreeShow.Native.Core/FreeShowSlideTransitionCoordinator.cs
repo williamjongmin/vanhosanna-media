@@ -137,7 +137,7 @@ public sealed partial class FreeShowOutputCommandCoordinator
                         (await runtime.CaptureAcknowledgedOutDataAsync(
                             target, cancellationToken)).Clone();
 
-                    if (!MatchesAcknowledgedOriginalSlide(
+                    if (!FreeShowSlideAcknowledgement.Matches(
                             target, acknowledgedState))
                         throw new InvalidDataException(
                             "Original setOutput/updateOut returned a different Show, " +
@@ -187,35 +187,5 @@ public sealed partial class FreeShowOutputCommandCoordinator
             }
         }
         finally { executeGate.Release(); }
-    }
-
-    private static bool MatchesAcknowledgedOriginalSlide(
-        FreeShowSlideTransitionTarget target, JsonElement originalOutData)
-    {
-        if (originalOutData.ValueKind != JsonValueKind.Object)
-            return false;
-        var slide = ShowDocument.Property(originalOutData, "slide");
-        if (slide.ValueKind != JsonValueKind.Object ||
-            ShowDocument.String(slide, "id") != target.ShowId ||
-            ShowDocument.String(slide, "layout") != target.LayoutId)
-            return false;
-
-        var index = ShowDocument.Property(slide, "index");
-        if (index.ValueKind != JsonValueKind.Number ||
-            !index.TryGetInt32(out var actual) || actual != target.LayoutIndex)
-            return false;
-
-        foreach (var key in new[] { "line", "revealCount", "itemClickReveal" })
-        {
-            var expected = ShowDocument.Property(target.NextOutSlide, key);
-            if (expected.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
-                continue;
-            var got = ShowDocument.Property(slide, key);
-            if (expected.ValueKind != got.ValueKind ||
-                expected.GetRawText() != got.GetRawText())
-                return false;
-        }
-
-        return true;
     }
 }

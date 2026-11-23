@@ -136,7 +136,8 @@ public sealed class NativeSlidePresenter : ContentControl
         var key = NativeRevealCacheKey.From(nativeCueOrdinal, outSlide, outputStyle);
         if (key == null || !revealVariants.TryGetValue(key.Value, out var view))
             return false;
-        if (CurrentIndex == nativeCueOrdinal && activeRevealVariant == key.Value)
+        if (CurrentIndex == nativeCueOrdinal && activeRevealVariant == key.Value &&
+            ReferenceEquals(Content, view))
             return true;
         Content = view;
         CurrentIndex = nativeCueOrdinal;
@@ -163,6 +164,24 @@ public sealed class NativeSlidePresenter : ContentControl
     }
 
     public int PreparedRevealVariantCount => revealVariants.Count;
+
+    /// <summary>
+    /// Confirms the exact cached control currently selected by Avalonia.
+    /// This is a logical presentation receipt, not proof of GPU scanout.
+    /// A clear, plain Show(), reprepare or external Content change invalidates it.
+    /// </summary>
+    public bool IsPresentingPrewarmedReveal(
+        int nativeCueOrdinal, JsonElement outSlide,
+        FreeShowRevealStyleContext outputStyle)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+            throw new InvalidOperationException("Native visual acknowledgment belongs to the UI thread.");
+        var key = NativeRevealCacheKey.From(nativeCueOrdinal, outSlide, outputStyle);
+        return key.HasValue && CurrentIndex == nativeCueOrdinal &&
+            activeRevealVariant == key.Value &&
+            revealVariants.TryGetValue(key.Value, out var view) &&
+            ReferenceEquals(Content, view);
+    }
 
     private Viewbox Build(NativeFramePlan frame, FreeShowOutputLayerPlan? output,
         Func<string, string?>? localStillImagePath, bool lyricsOnlyOverlay)

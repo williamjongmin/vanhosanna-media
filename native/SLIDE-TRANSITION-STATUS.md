@@ -1,5 +1,7 @@
 # Native Port 0.0.24 — original FreeShow slide command lifecycle integration
 
+Follow-up: [0.0.25 prepared lyric application](SLIDE-PRESENTATION-STATUS.md) implements the source/visual adapter, adds a selected-control receipt and strengthens acknowledgment of absent reveal fields. The complete production source action backend is still unimplemented.
+
 ## Goal
 Connect the source-accurate navigation and prewarmed native lyric views to a fail-closed command coordinator **without treating a cached text-frame swap as a complete FreeShow slide action**. No physical output runtime is registered in the read-only OperatorProbe.
 

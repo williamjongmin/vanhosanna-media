@@ -1955,6 +1955,8 @@ using (var navShowJson = JsonDocument.Parse("""
     noSlide.Dispose();
 }
 
+await SlideTransitionRuntimeChecks.RunAsync();
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)

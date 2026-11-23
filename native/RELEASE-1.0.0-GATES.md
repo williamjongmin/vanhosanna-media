@@ -7,6 +7,7 @@
 ## Current baseline (2026-11-23)
 - Original FreeShow fork / church-dev operational source preserved.
 - native-port contains lossless .show parsing, project/source preview models, core OutData and clear/restore plans, a persistent single-video LibVLC output prototype, and read-only Avalonia operator panels and navigation/reveal preparation.
+- 0.0.25 adds the prepared-lyric application adapter and logical visual acknowledgment, plus source slide-assignment semantics. A complete native source action backend and live operator/output-window integration are still missing; the adapter does not enable production output by itself.
 - No Windows build or fixture suite has been executed under the user's explicit **defer all builds/tests until Beta 2** request.
 - No physical output has been measured; under-50ms is an objective, not an observed result.
 - Full FreeShow source parity is **not** achieved; native developer output is not approved for live worship.

@@ -79,7 +79,12 @@ public static class NativeSlideTransitionVisualPreparation
             return Refuse(warmed.Problem ??
                 "Native source lyric prewarming was incomplete.");
 
-        return new(warmed.PreparedOutputCount, true, null);
+        return new(warmed.PreparedOutputCount, true, null)
+        {
+            PreparedStyles = new System.Collections.ObjectModel.ReadOnlyDictionary<
+                string, FreeShowRevealStyleContext>(projected.Targets.ToDictionary(
+                    pair => pair.Key, pair => pair.Value.Style, StringComparer.Ordinal))
+        };
     }
 
     private static NativeSlideTransitionVisualResult Refuse(string reason) =>
@@ -90,5 +95,15 @@ public sealed record NativeSlideTransitionVisualResult(
     int PrewarmedOutputCount, bool ReadyForSourcePhaseIntegration,
     string? Refusal)
 {
+    /// <summary>
+    /// Exact source-batch styles used by the cached controls, for constructing
+    /// a single-command FreeShowPreparedSlideTransitionRuntime per target.
+    /// A production source backend must independently capture current style
+    /// at application/acknowledgment time; this prediction is not an ack.
+    /// </summary>
+    public IReadOnlyDictionary<string, FreeShowRevealStyleContext> PreparedStyles { get; init; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, FreeShowRevealStyleContext>(
+            new Dictionary<string, FreeShowRevealStyleContext>());
+
     public bool CanDispatchLive => false;
 }
