@@ -47,6 +47,8 @@ public sealed class FreeShowOperatorWorkspace : UserControl
     };
 
     private FreeShowOperatorWorkspaceState state;
+    private readonly Dictionary<string, FreeShowPageRegions> portedPageRegions = new(
+        StringComparer.Ordinal);
 
     // Exact hierarchy from App.svelte -> MenuBar and MainLayout.svelte:
     // Top; [Resizeable(left) | center | Resizeable(right)]; project timeline;
@@ -97,9 +99,41 @@ public sealed class FreeShowOperatorWorkspace : UserControl
         drawer.IsVisible = state.ShowDrawer;
         ProjectTimelineHost.IsVisible = ProjectTimelineVisible && state.Page == "show";
         ConfigureRightPanel(state.RightPanelIsHorizontal);
+        RefreshPageRegions();
+    }
+
+    /// <summary>
+    /// Register *actual* ported FreeShow components for the page. Original
+    /// MainLayout.svelte maps each page to these three slots; this class
+    /// does not fabricate screens for pages that have not yet been ported.
+    /// </summary>
+    public void RegisterPageRegions(string page, FreeShowPageRegions content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (page is not ("show" or "edit" or "stage" or "draw" or "settings"))
+            throw new ArgumentException(
+                "Page is not mapped by original FreeShow MainLayout.svelte.", nameof(page));
+        portedPageRegions[page] = content;
+        if (state.Page == page) RefreshPageRegions();
     }
 
     public void ChangePage(string originalPageId) => ApplyState(state.WithPage(originalPageId));
+
+    private void RefreshPageRegions()
+    {
+        if (!portedPageRegions.TryGetValue(state.Page, out var regions))
+        {
+            // An unported screen is *not* replaced with a new custom design.
+            LeftNavigationHost.Content = null;
+            CenterPageHost.Content = null;
+            RightToolsHost.Content = null;
+            return;
+        }
+
+        LeftNavigationHost.Content = regions.Left;
+        CenterPageHost.Content = regions.Center;
+        RightToolsHost.Content = regions.RightTools;
+    }
 
     /// <summary>
     /// Original FreeShow displays the optional timeline only when the
@@ -197,3 +231,15 @@ public sealed class FreeShowOperatorWorkspace : UserControl
     private static void SetRow(Grid grid, int index, double height) =>
         grid.RowDefinitions[index].Height = new GridLength(height);
 }
+
+
+/// <summary>
+/// Exact porting destinations for original MainLayout.svelte page branches:
+/// show: Projects / Show / ShowTools
+/// edit: Navigation / Editor / EditTools or specialized media tools
+/// stage: StageLayouts / StageLayout / StageTools
+/// draw: DrawTabs / Slide / DrawSettings
+/// settings: SettingsTabs / Settings / SettingsTools
+/// RightPreviewHost is shared and remains separate from RightTools.
+/// </summary>
+public sealed record FreeShowPageRegions(Control Left, Control Center, Control? RightTools);
