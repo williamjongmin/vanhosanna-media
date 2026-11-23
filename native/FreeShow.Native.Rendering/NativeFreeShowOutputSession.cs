@@ -20,6 +20,39 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
     public int CurrentCue { get; private set; } = -1;
     public int LastClearedCue { get; private set; } = -1;
 
+    /// <summary>
+    /// Bind a source SETTINGS output rather than a hand-invented Main/Stage enum.
+    /// Stage layout and network outputs need other backends and are rejected
+    /// until ported (they must not silently become normal lyric outputs).
+    /// </summary>
+    public NativeFreeShowOutputSession(
+        FreeShowConfiguredOutput profile, ShowDocument source,
+        FreeShowVisualSettings settings, string freeShowDataRoot,
+        Func<string, FreeShowMediaReference>? mediaResolver = null)
+        : this(
+            profile?.Id ?? throw new ArgumentNullException(nameof(profile)),
+            source, settings, profile.StyleId, freeShowDataRoot,
+            ActiveBackgroundId(profile), mediaResolver)
+    {
+        if (profile.StageSourceId != null)
+            throw new NotSupportedException(
+                "Original FreeShow Stage output requires stage-specific native rendering.");
+        if (profile.NeedsUnportedStreamingBackend)
+            throw new NotSupportedException(
+                "Original FreeShow network/capture output requires its native streaming backend.");
+        if (profile.Transparent)
+            throw new NotSupportedException(
+                "Original FreeShow transparent output composition has not been ported.");
+    }
+
+    private static string? ActiveBackgroundId(FreeShowConfiguredOutput profile)
+    {
+        var output = ShowDocument.Property(profile.Raw, "out");
+        var background = ShowDocument.Property(output, "background");
+        var path = ShowDocument.String(background, "path");
+        return path.Length > 0 ? path : ShowDocument.String(background, "id");
+    }
+
     public NativeFreeShowOutputSession(
         string outputId, ShowDocument source,
         FreeShowVisualSettings settings, string outputStyleId,
