@@ -32,6 +32,17 @@ public sealed class FreeShowOutputCommandCoordinator
     public IReadOnlyDictionary<string, FreeShowOutputState> States => states;
 
     /// <summary>
+    /// The original Preview must reflect acknowledged native output changes,
+    /// not stale SETTINGS JSON. A successful command updates this model only
+    /// after its complete registered runtime reports success.
+    /// </summary>
+    public FreeShowPreviewSnapshot CurrentPreview(
+        FreeShowAuxiliaryPreviewState? auxiliary = null) =>
+        FreeShowPreviewControlState.Prepare(configuration, overlays, auxiliary, states);
+
+
+
+    /// <summary>
     /// Registration is explicit. The read-only developer OperatorProbe does not
     /// call this method: its clear buttons and live shortcut handlers stay
     /// disabled. Runtime may represent a physical output or the one global
@@ -72,6 +83,33 @@ public sealed class FreeShowOutputCommandCoordinator
         return await DispatchPreparedAsync(plans, cancellationToken);
     }
 
+    /// <summary>
+    /// Non-executing preflight used by a future source-UI action bridge.
+    /// Unimplemented actions stay disabled; this does not alter the
+    /// shortcut router's timing/deduplication state.
+    /// </summary>
+    public IReadOnlyList<string> CheckReadiness(
+        IReadOnlyList<FreeShowOutputCommandPlan> plans)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        var problems = new List<string>();
+        foreach (var plan in plans)
+        {
+            foreach (var warning in plan.Warnings)
+                problems.Add(plan.OutputId + ": " + warning);
+            if (!plan.CanPlan) continue;
+            if (!runtimes.TryGetValue(plan.OutputId, out var runtime))
+            {
+                problems.Add(plan.OutputId + ": original output runtime not installed.");
+                continue;
+            }
+            foreach (var effect in plan.RequiredEffects.Distinct())
+                if (!runtime.SupportsSourceEffect(effect))
+                    problems.Add(plan.OutputId + ": missing source-complete effect " + effect);
+        }
+        return problems.AsReadOnly();
+    }
+
     public async Task<FreeShowCommandBatchResult> DispatchPreparedAsync(
         IReadOnlyList<FreeShowOutputCommandPlan> plans,
         CancellationToken cancellationToken = default)
@@ -84,22 +122,7 @@ public sealed class FreeShowOutputCommandCoordinator
             // physical screens if another screen is missing a required
             // backend capability. Physical execution is not a transaction:
             // if a backend throws mid-flight, report PartialExecution.
-            var problems = new List<string>();
-            foreach (var plan in plans)
-            {
-                foreach (var warning in plan.Warnings)
-                    problems.Add(plan.OutputId + ": " + warning);
-
-                if (!plan.CanPlan) continue;
-                if (!runtimes.TryGetValue(plan.OutputId, out var runtime))
-                {
-                    problems.Add(plan.OutputId + ": original output runtime not installed.");
-                    continue;
-                }
-                foreach (var effect in plan.RequiredEffects.Distinct())
-                    if (!runtime.SupportsSourceEffect(effect))
-                        problems.Add(plan.OutputId + ": missing source-complete effect " + effect);
-            }
+            var problems = CheckReadiness(plans);
             if (problems.Count != 0)
                 return new(FreeShowCommandResultStatus.Refused,
                     0, plans.Count, problems.AsReadOnly());
