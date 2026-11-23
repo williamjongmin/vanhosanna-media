@@ -869,6 +869,150 @@ using (var originalOverlays = JsonDocument.Parse("""
     Check(cache.Snapshot().Count == 0, "Double F2 erases cached original output positions");
 }
 
+// 0.0.16 — original FreeShow outputCache, restoreOutput and clearTimers.
+// Synthetic only: never touches a real FreeShow settings/store or output.
+using (var restoreSettings = JsonDocument.Parse("""
+{
+  "outLocked": false,
+  "outputs": {
+    "display-a": {"name":"Main","enabled":true,"active":true,
+      "bounds":{"width":1920,"height":1080},
+      "out":{"slide":{"id":"original-show-id","layout":"main","index":1},
+             "background":{"path":"loop.mp4"},"overlays":[],
+             "effects":[],"unknownNativeMustKeep":{"original":"yes"}}},
+    "display-b": {"name":"Online","enabled":true,"active":true,
+      "bounds":{"width":1920,"height":1080},
+      "out":{"slide":{"id":"original-show-id","layout":"main","index":0},
+             "background":null,"effects":[],"overlays":[]}},
+    "disabled-display": {"name":"Disabled","enabled":false,"active":false,
+      "bounds":{"width":1920,"height":1080},
+      "out":{"slide":{"id":"old","index":2}}}
+  }
+}
+"""))
+using (var originalAudio = JsonDocument.Parse("""
+[{"path":"file.mp3","metadata":{"name":"Prelude"},"options":{"startAt":12.3}}]
+"""))
+{
+    var outputConfig = FreeShowOutputConfiguration.Parse(restoreSettings.RootElement);
+    var coordinator = new FreeShowOutputCommandCoordinator(outputConfig);
+    var ids = outputConfig.GetActiveNormalOutputs().Select(x => x.Id).ToArray();
+    var restoreCache = new FreeShowOutputRestoreCache();
+
+    restoreCache.Capture(ids, coordinator.States);
+    Check(restoreCache.HasSnapshot && !restoreCache.HasCompleteAudioSnapshot &&
+        !restoreCache.PlanRestore(ids, coordinator.States).IsSourceComplete,
+        "Unknown original global audio prevents fake complete Restore");
+
+    restoreCache.Capture(ids, coordinator.States, originalAudio.RootElement, false);
+    var baseline = restoreCache.PlanRestore(ids, coordinator.States);
+    Check(baseline.IsSourceComplete && baseline.OutputSnapshots.Count == 2 &&
+          baseline.PlayingAudioData.GetArrayLength() == 1 &&
+          baseline.PlayingMetronome == false,
+        "Clear All stores full active output data plus original audio and metronome state");
+
+    var clearA = new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "display-a");
+    var clearB = new FreeShowShortcutAction(NativeShortcutCommand.ClearSlide, "display-b");
+    Check(coordinator.States["display-a"].TryApply(clearA) &&
+          coordinator.States["display-b"].TryApply(clearB),
+        "Synthetic outputs can be independently cleared in memory");
+    Check(restoreCache.PlanRestore(ids, coordinator.States).IsSourceComplete,
+        "Output cache survives visual clear and retains original slide data");
+
+    var noAudio = new RecordingOutputRestoreRuntime(["display-a","display-b"], audioAvailable:false);
+    var blockedRestore = await coordinator.RestoreAsync(restoreCache, noAudio);
+    Check(blockedRestore.Status == FreeShowRestoreStatus.Refused &&
+          restoreCache.HasSnapshot &&
+          !coordinator.States["display-a"].HasSlide,
+        "Missing full audio restore backend blocks all physical output changes");
+
+    var partialRestore = new RecordingOutputRestoreRuntime(["display-a","display-b"], true)
+    {
+        FailForOutput = "display-b"
+    };
+    var partialResult = await coordinator.RestoreAsync(restoreCache, partialRestore);
+    Check(partialResult.Status == FreeShowRestoreStatus.PartialExecution &&
+          partialResult.OutputsRestored == 1 &&
+          coordinator.States["display-a"].HasSlide &&
+          !coordinator.States["display-b"].HasSlide &&
+          restoreCache.HasSnapshot,
+        "Partial restore reports failure and preserves backup for reconciliation");
+
+    var fullRestore = new RecordingOutputRestoreRuntime(["display-a","display-b"], true);
+    var restored = await coordinator.RestoreAsync(restoreCache, fullRestore);
+    Check(restored.Succeeded && restored.OutputsRestored == 2 &&
+          fullRestore.RestoredAudio && fullRestore.RestoredMetronome == false &&
+          !restoreCache.HasSnapshot && coordinator.States["display-b"].HasSlide,
+        "Acknowledged full restore returns both outputs and global playback then clears cache");
+    Check(ShowDocument.Property(coordinator.States["display-a"].Snapshot(),
+        "unknownNativeMustKeep").ValueKind == JsonValueKind.Object,
+        "Restore retains original unknown OutData fields without rewriting show or settings");
+
+    long revision = coordinator.States["display-a"].Revision;
+    var snapshot = coordinator.States["display-a"].Snapshot();
+    Check(!await coordinator.SynchronizeAcknowledgedOutputAsync(
+            "display-a", snapshot, revision - 1),
+        "Late external output event cannot overwrite newer acknowledged state");
+    Check(await coordinator.SynchronizeAcknowledgedOutputAsync(
+            "display-a", snapshot, revision) &&
+          coordinator.States["display-a"].Revision == revision + 1,
+        "Matching source revision synchronizes the original complete OutData");
+
+    var restoredAgain = restoreCache.PlanRestore(ids, coordinator.States);
+    Check(!restoredAgain.IsSourceComplete,
+        "Restore is single-use after complete acknowledgement");
+
+    var zeroAudio = JsonDocument.Parse("[]");
+    restoreCache.Capture(ids, coordinator.States, zeroAudio.RootElement, false);
+    using var fullyCleared = JsonDocument.Parse("""
+{"outLocked":false,"outputs":{"display-a":{"name":"Main","enabled":true,"active":true,
+"bounds":{"width":1920,"height":1080},
+"out":{"slide":null,"background":null,"overlays":[],"effects":[]}}}}
+""");
+    var preview = FreeShowPreviewControlState.Prepare(
+        FreeShowOutputConfiguration.Parse(fullyCleared.RootElement),
+        runtime:new FreeShowAuxiliaryPreviewState(
+            PreviewLayerPresence.Cleared, PreviewLayerPresence.Cleared));
+    var savedAt = DateTimeOffset.UnixEpoch;
+    Check(!FreeShowRestoreEligibility.CanOffer(
+            restoreCache, preview, savedAt, savedAt.AddMilliseconds(999)) &&
+          FreeShowRestoreEligibility.CanOffer(
+            restoreCache, preview, savedAt, savedAt.AddMilliseconds(1000)),
+        "Original ClearButtons Restore waits 1000 ms after a complete clear");
+    var unknownAudioPreview = FreeShowPreviewControlState.Prepare(
+        FreeShowOutputConfiguration.Parse(fullyCleared.RootElement));
+    Check(!FreeShowRestoreEligibility.CanOffer(
+            restoreCache, unknownAudioPreview, savedAt, savedAt.AddSeconds(2)),
+        "Original global audio playback unknown cannot be treated as cleared");
+    zeroAudio.Dispose();
+}
+
+{
+    var timers = new FreeShowOutputTimerRegistry();
+    var slideA = new RecordingSourceTimer();
+    var overlayA = new RecordingSourceTimer();
+    var slideB = new RecordingSourceTimer();
+    timers.RegisterSlide("display-a", slideA);
+    timers.RegisterOverlay("display-a", "announcement", overlayA);
+    timers.RegisterSlide("display-b", slideB);
+    var f2Only = await timers.CancelAsync(["display-a"], cancelOverlayTimers:false);
+    Check(f2Only.Succeeded && f2Only.CancelledSlideTimers == 1 &&
+          f2Only.CancelledOverlayTimers == 0 &&
+          slideA.Cancelled && !overlayA.Cancelled && !slideB.Cancelled,
+        "F2 clearTimers('', false) cancels next slide timer but keeps overlays and other displays");
+    var fullTimerClear = await timers.CancelAsync(["display-a","display-b"], cancelOverlayTimers:true);
+    Check(fullTimerClear.Succeeded && fullTimerClear.CancelledSlideTimers == 1 &&
+          fullTimerClear.CancelledOverlayTimers == 1 &&
+          overlayA.Cancelled && slideB.Cancelled &&
+          timers.SlideTimerCount == 0 && timers.OverlayTimerCount == 0,
+        "Clear All cancels independent source slide and overlay timers for active outputs");
+    var failingTimer = new RecordingSourceTimer { FailToCancel = true };
+    timers.RegisterSlide("display-a", failingTimer);
+    var failure = await timers.CancelAsync(["display-a"], cancelOverlayTimers:false);
+    Check(!failure.Succeeded && timers.SlideTimerCount == 1 && !failingTimer.Cancelled,
+        "Failed physical timer cancellation stays registered for explicit retry");
+}
+
 Console.WriteLine("Native FreeShow source-compatibility fixture checks passed.");
 
 static void Check(bool condition, string label)
@@ -911,6 +1055,62 @@ internal sealed class RecordingOutputCommandRuntime : IFreeShowOutputCommandRunt
             throw new NotSupportedException("Incomplete source-effect runtime");
         cancellationToken.ThrowIfCancellationRequested();
         Executed.AddRange(plan.RequiredEffects);
+        return Task.CompletedTask;
+    }
+}
+
+
+internal sealed class RecordingOutputRestoreRuntime : IFreeShowOutputRestoreRuntime
+{
+    private readonly HashSet<string> allowedOutputs;
+    private readonly bool audioAvailable;
+    public string? FailForOutput { get; set; }
+    public List<string> RestoredOutputIds { get; } = new();
+    public bool RestoredAudio { get; private set; }
+    public bool? RestoredMetronome { get; private set; }
+
+    public RecordingOutputRestoreRuntime(IEnumerable<string> ids, bool audioAvailable)
+    {
+        allowedOutputs = new HashSet<string>(ids, StringComparer.Ordinal);
+        this.audioAvailable = audioAvailable;
+    }
+
+    public bool CanRestoreOutput(string originalOutputId, JsonElement originalOutData) =>
+        allowedOutputs.Contains(originalOutputId) &&
+        originalOutData.ValueKind == JsonValueKind.Object;
+
+    public bool CanRestoreGlobalAudio(JsonElement playingAudioData, bool playingMetronome) =>
+        audioAvailable && playingAudioData.ValueKind == JsonValueKind.Array;
+
+    public Task RestoreOutputAsync(string originalOutputId, JsonElement originalOutData,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (originalOutputId == FailForOutput)
+            throw new IOException("Synthetic restore failure.");
+        RestoredOutputIds.Add(originalOutputId);
+        return Task.CompletedTask;
+    }
+
+    public Task RestoreGlobalAudioAsync(JsonElement playingAudioData, bool playingMetronome,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RestoredAudio = true;
+        RestoredMetronome = playingMetronome;
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class RecordingSourceTimer : IFreeShowTimerCancellation
+{
+    public bool FailToCancel { get; set; }
+    public bool Cancelled { get; private set; }
+    public Task CancelAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailToCancel) throw new IOException("Synthetic timer failure.");
+        Cancelled = true;
         return Task.CompletedTask;
     }
 }
