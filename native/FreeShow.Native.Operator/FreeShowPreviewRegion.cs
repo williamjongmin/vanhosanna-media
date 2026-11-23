@@ -16,6 +16,7 @@ public sealed class FreeShowPreviewRegion : UserControl
     private readonly FreeShowOutputConfiguration settings;
     private readonly FreeShowMultiOutputPreview multiOutputs;
     private readonly FreeShowClearButtons clears;
+    private readonly FreeShowOutputCommandCoordinator? coordinator;
     private readonly ContentControl detailHost = new();
 
     public FreeShowClearButtons ClearButtons => clears;
@@ -32,11 +33,13 @@ public sealed class FreeShowPreviewRegion : UserControl
     public FreeShowPreviewRegion(FreeShowOutputConfiguration source,
         ShowDocument? currentShow = null,
         JsonElement originalOverlayDefinitions = default,
-        FreeShowAuxiliaryPreviewState? runtime = null)
+        FreeShowAuxiliaryPreviewState? runtime = null,
+        FreeShowOutputCommandCoordinator? outputController = null)
     {
         settings = source ?? throw new ArgumentNullException(nameof(source));
+        coordinator = outputController;
         multiOutputs = new FreeShowMultiOutputPreview(settings, currentShow);
-        clears = new FreeShowClearButtons(
+        clears = new FreeShowClearButtons(coordinator?.CurrentPreview(runtime) ??
             FreeShowPreviewControlState.Prepare(settings, originalOverlayDefinitions, runtime));
         clears.CategorySelected += (_, _) =>
         {
@@ -78,7 +81,8 @@ public sealed class FreeShowPreviewRegion : UserControl
     public void UpdateClearState(JsonElement originalOverlayDefinitions = default,
         FreeShowAuxiliaryPreviewState? runtime = null)
     {
-        clears.Refresh(FreeShowPreviewControlState.Prepare(
-            settings, originalOverlayDefinitions, runtime));
+        clears.Refresh(coordinator?.CurrentPreview(runtime) ??
+            FreeShowPreviewControlState.Prepare(
+                settings, originalOverlayDefinitions, runtime));
     }
 }
