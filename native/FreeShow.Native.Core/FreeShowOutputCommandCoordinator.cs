@@ -8,7 +8,7 @@ namespace FreeShow.Native.Core;
 /// registered complete source-compatible runtime adapters.
 /// Nothing in this class opens windows, runs media or writes FreeShow files.
 /// </summary>
-public sealed class FreeShowOutputCommandCoordinator
+public sealed partial class FreeShowOutputCommandCoordinator
 {
     private readonly FreeShowOutputConfiguration configuration;
     private readonly JsonElement overlays;
