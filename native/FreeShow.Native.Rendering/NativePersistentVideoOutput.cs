@@ -105,6 +105,15 @@ public sealed class NativePersistentVideoOutput : ContentControl, IAsyncDisposab
     }
 
     /// <summary>
+    /// Read-only check that the entire source lyric reveal visual was
+    /// prewarmed for this specific output; never touches LibVLC.
+    /// </summary>
+    public bool HasPrewarmedReveal(
+        int cue, System.Text.Json.JsonElement outSlide,
+        FreeShowRevealStyleContext style) =>
+        !closing && lyrics.HasPrewarmedReveal(cue, outSlide, style);
+
+    /// <summary>
     /// Swap a prebuilt reveal view only. Like ShowCue, this must never touch
     /// LibVLC, seek video or allocate new lyric controls in the hot path.
     /// Metrics still measure synchronous dispatch, not visible-frame latency.
