@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using FreeShow.Native.Core;
 
 namespace FreeShow.Native.Operator;
@@ -33,6 +34,7 @@ public sealed class FreeShowClearButtons : UserControl
     private Func<FreeShowClearAllContext>? clearAllContext;
     private Func<string, ShowDocument?>? clearAllShowLookup;
     private Func<FreeShowAuxiliaryPreviewState?>? currentPlaybackState;
+    private DispatcherTimer? restoreEnableTimer;
     private string locale = "en";
     private static readonly IReadOnlyDictionary<string, string> EnglishLabels =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -162,6 +164,12 @@ public sealed class FreeShowClearButtons : UserControl
     public void RemoveSourceActions()
     {
         guardedCoordinator = null;
+        restoreRuntime = null;
+        clearAllRuntime = null;
+        clearAllContext = null;
+        clearAllShowLookup = null;
+        clearAllSlideCache = null;
+        currentPlaybackState = null;
         sourceCompatibleActions.Clear();
         actualOutputControllerInstalled = false;
         Rebuild();
@@ -169,6 +177,8 @@ public sealed class FreeShowClearButtons : UserControl
 
     private void Rebuild()
     {
+        restoreEnableTimer?.Stop();
+        restoreEnableTimer = null;
         clearButtons.Clear();
         expandButtons.Clear();
         root.Children.Clear();
@@ -296,6 +306,29 @@ public sealed class FreeShowClearButtons : UserControl
             Padding = new Thickness(10, 5),
             IsEnabled = ready && !commandRunning
         };
+
+        // Original Svelte enables Restore after 1000ms even when no other
+        // UI store changes. Schedule a single UI-thread refresh at that
+        // deadline. Do not schedule when no full restore backend exists.
+        if (!ready && restoreRuntime != null && guardedCoordinator != null &&
+            restoreCache?.HasCompleteAudioSnapshot == true &&
+            state.Control("all").Presence == PreviewLayerPresence.Cleared)
+        {
+            var remaining = restoreSavedAt.AddSeconds(1) - currentTime();
+            if (remaining > TimeSpan.Zero)
+            {
+                var timer = new DispatcherTimer { Interval = remaining };
+                timer.Tick += (_, _) =>
+                {
+                    timer.Stop();
+                    if (ReferenceEquals(restoreEnableTimer, timer))
+                        restoreEnableTimer = null;
+                    Rebuild();
+                };
+                restoreEnableTimer = timer;
+                timer.Start();
+            }
+        }
         ToolTip.SetTip(button, Label("restore") +
             (button.IsEnabled ? "" : " — source-complete restore backend unavailable"));
         button.Click += async (_, _) =>
