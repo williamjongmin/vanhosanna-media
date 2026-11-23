@@ -96,6 +96,24 @@ public sealed class FreeShowPreviewRegion : UserControl
         IFreeShowOutputRestoreRuntime? completeRuntime = null,
         Func<DateTimeOffset>? clock = null) =>
         clears.BindRestore(cache, savedAt, completeRuntime, clock);
+    
+    /// <summary>
+    /// The complete Clear All adapter must be installed deliberately by a
+    /// production operator controller. The developer probe does not supply
+    /// source audio, timeline or media adapters, keeping Clear All disabled.
+    /// </summary>
+    public void BindSourceCompleteClearAll(
+        FreeShowOutputCommandCoordinator sourceCoordinator,
+        FreeShowOutputRestoreCache savedCache,
+        FreeShowOutputSlidePositionCache slideCache,
+        IFreeShowClearAllRuntime completeRuntime,
+        Func<FreeShowClearAllContext> playbackAndOperatorContext,
+        Func<string, ShowDocument?>? sourceShowLookup = null,
+        Func<FreeShowAuxiliaryPreviewState?>? playbackState = null)
+        => clears.BindSourceCompleteClearAll(
+            sourceCoordinator, savedCache, slideCache, completeRuntime,
+            playbackAndOperatorContext, sourceShowLookup, playbackState);
+
 
     public void UpdateClearState(JsonElement originalOverlayDefinitions = default,
         FreeShowAuxiliaryPreviewState? runtime = null)
