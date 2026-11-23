@@ -27,9 +27,11 @@ public sealed record FreeShowOperatorWorkspaceState(
     public const double MinimumDrawerHeight = 40; // Drawer.svelte
     public const double ExpandedRightPanelThreshold = DefaultPanelWidth * 1.8;
 
-    public bool ShowMenuBar => !FocusMode;
+    // On Windows App.svelte keeps the 25px MenuBar even when MainLayout
+    // hides Top in focus mode.
+    public bool ShowMenuBar => true;
     public bool ShowTopBar => !FocusMode;
-    public bool ShowDrawer => Page is "show" or "edit" && (!FocusMode || Page == "show");
+    public bool ShowDrawer => Page is "show" or "edit";
     public bool RightPanelIsHorizontal => RightPanelWidth > ExpandedRightPanelThreshold;
     public bool ShowShowTools => Page == "show" && !FocusMode;
     public bool ShowOutputPreview => true;
