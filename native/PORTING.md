@@ -62,6 +62,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.8 Instrumentation:** `NativeCueDispatchMetrics` records bounded p50/p95/p99/max synchronous Avalonia content-swap timings. This is NOT user-input-to-physical-display latency; see `PERFORMANCE-MEASUREMENT.md`. Code checks are written but not executed.
 
+- **0.0.9 Output identity and control compatibility:** original local `SETTINGS.outputs` IDs, enabled/active states, style mapping and display bounds are now read without replacing them with Main/Online/Stage enums. Presentation shortcut dispatch models original F1–F5, Space, arrows and Home/End context guards; F1/F2/F3 are modeled as independent output data layers, with F2 clearing the native lyric overlay without restarting video. The source-based shortcut rules are not yet wired to the production operator UI. See `OUTPUT-CONTROL-COMPATIBILITY.md`. Build/behavior/hardware checks remain unexecuted.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
