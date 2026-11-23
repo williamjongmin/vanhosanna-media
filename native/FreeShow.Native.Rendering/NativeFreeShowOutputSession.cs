@@ -148,6 +148,32 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Warm a bounded, source-authoritative sequence before live cue input.
+    /// Only a single-output source progression is currently supported.
+    /// This is a preparation helper, NOT the missing original updateOut
+    /// action controller.
+    /// </summary>
+    public NativeRevealPrewarmResult PrewarmSourceRevealSequence(
+        FreeShowRevealPrewarmPlan source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (disposed || !source.CanPrewarmCompleteSlide)
+            return new(0, source.Omission ??
+                "Original reveal prewarm plan is incomplete or session closed.");
+
+        int warmed = 0;
+        foreach (var step in source.States)
+        {
+            if (step.OriginalLayoutIndex < 0 ||
+                !PrewarmReveal(step.OutSlide, step.Style))
+                return new(warmed,
+                    "Native renderer rejected one original reveal variant; no live action is enabled.");
+            warmed++;
+        }
+        return new(warmed, null);
+    }
+
+    /// <summary>
     /// Present an already-prepared reveal variant without interacting with
     /// the decoder. No missing variant is generated in this hot path.
     /// </summary>
@@ -259,5 +285,11 @@ public sealed class NativeFreeShowOutputSession : IAsyncDisposable
 public sealed record NativeSourceCueLookup(int? NativeCueOrdinal, string? Refusal)
 {
     public bool CanPreviewNativeFrame => NativeCueOrdinal.HasValue && Refusal == null;
+    public bool CanDispatchLive => false;
+}
+
+public sealed record NativeRevealPrewarmResult(int PreparedCount, string? Refusal)
+{
+    public bool PreparedAll => Refusal == null && PreparedCount > 0;
     public bool CanDispatchLive => false;
 }
