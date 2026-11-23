@@ -18,9 +18,11 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1)
+        bool useOriginalStyle = args.Length == 5 && args[1] == "--data-root" && args[3] == "--style";
+        if (args.Length != 1 && !useOriginalStyle)
         {
-            Console.Error.WriteLine("Usage: dotnet run --project native/FreeShow.Native.VisualProbe -- <source.show>");
+            Console.Error.WriteLine("Usage: FreeShow.Native.VisualProbe <source.show>");
+            Console.Error.WriteLine("   or: FreeShow.Native.VisualProbe <source.show> --data-root <FreeShow folder> --style <output style id>");
             return 2;
         }
 
@@ -28,6 +30,14 @@ internal static class Program
         {
             var source = ShowDocument.ReadAsync(args[0]).GetAwaiter().GetResult();
             ProbeApp.Frames = NativeRenderPlanner.Prepare(source);
+            if (useOriginalStyle)
+            {
+                var dataRoot = args[2];
+                var settings = FreeShowVisualSettings.OpenAsync(dataRoot).GetAwaiter().GetResult();
+                ProbeApp.OutputPlans = FreeShowOutputLayerPlanner.Prepare(source, settings, args[4]);
+                ProbeApp.LocalStillImagePath = id => FreeShowMediaLookup.ExistingStillImagePath(
+                    FreeShowMediaLookup.Resolve(source, id), dataRoot);
+            }
             return AppBuilder.Configure<ProbeApp>()
                 .UsePlatformDetect()
                 .LogToTrace()
@@ -44,13 +54,15 @@ internal static class Program
 public sealed class ProbeApp : Application
 {
     internal static IReadOnlyList<NativeFramePlan> Frames { get; set; } = [];
+    internal static IReadOnlyList<FreeShowOutputLayerPlan>? OutputPlans { get; set; }
+    internal static Func<string, string?>? LocalStillImagePath { get; set; }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var presenter = new NativeSlidePresenter();
-            presenter.Prepare(Frames);
+            presenter.Prepare(Frames, OutputPlans, LocalStillImagePath);
             var status = new TextBlock
             {
                 Foreground = Brushes.Gold,
@@ -63,9 +75,14 @@ public sealed class ProbeApp : Application
                 if (!presenter.Show(next)) return;
                 index = next;
                 var plan = Frames[index];
+                var layer = OutputPlans?[index];
+                var warnings = layer == null
+                    ? plan.Unsupported
+                    : plan.Unsupported.Concat(layer.Unsupported).Distinct().ToArray();
                 status.Text = $"Native comparison probe | {index + 1}/{Frames.Count} " +
                     $"| {plan.Source.Group} | Source {plan.Source.SlideId} " +
-                    $"| Unsupported features: {string.Join(", ", plan.Unsupported)}";
+                    $"| Template {layer?.Template.TemplateId ?? "(none)"} | " +
+                    $"Unsupported: {string.Join(", ", warnings)}";
             }
 
             var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
