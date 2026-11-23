@@ -318,7 +318,7 @@ Check(f2Again.Count == 2 && f2Again.All(x => x.ClearCachedSlidePosition),
 Check(router.Route(new NativeShortcutInput("F2", at.AddMilliseconds(1410),
     Repeat:true), activeIds).Count == 0, "Repeated F2 key events are ignored");
 var f3 = router.Route(new NativeShortcutInput("F3", at.AddSeconds(3)), activeIds);
-Check(f3.Count == 4 && f3.Count(x => x.Command == NativeShortcutCommand.ClearOverlays) == 2
+Check(f3.Count == 4 && f3.Count(x => x.Command == NativeShortcutCommand.ClearAllOverlaysForShortcut) == 2
     && f3.Count(x => x.Command == NativeShortcutCommand.ClearEffects) == 2,
     "Original F3 clears overlays and effects separately");
 var f4 = router.Route(new NativeShortcutInput("F4", at.AddSeconds(4)), activeIds);
@@ -377,7 +377,7 @@ using (var liveSettings = JsonDocument.Parse("""
         "Locked overlays cannot be cleared blindly without original metadata");
     state.ClearOverlaysKeepingLocked(new HashSet<string> { "announcement" });
     Check(state.Overlays.SequenceEqual(["announcement"]) && state.Effects.Count == 0,
-        "Original F3 preserves locked overlays while clearing effects");
+        "Original Preview clear button preserves locked overlays while clearing effects");
     Check(state.TryApply(new FreeShowShortcutAction(NativeShortcutCommand.ClearEffects, "worship"))
         && state.Effects.Count == 0,
         "F3 effects clearing is independent and idempotent");
@@ -715,7 +715,8 @@ using (var originalOverlays = JsonDocument.Parse("""
               FreeShowSourceEffect.CaptureLastSlidePositionIfEligible,
               FreeShowSourceEffect.CancelNextSlideTimers,
               FreeShowSourceEffect.ClearSlideOutput,
-              FreeShowSourceEffect.NotifySlideCleared]),
+              FreeShowSourceEffect.NotifySlideCleared,
+              FreeShowSourceEffect.RecordTimelineClearSlide]),
           "Original F2 effect order caches position, cancels timer, clears lyrics and notifies actions");
     Check(clearSlide.SourceAction.OutputId == "screen1",
         "F2 source output identity is preserved");
@@ -777,17 +778,33 @@ using (var originalOverlays = JsonDocument.Parse("""
         new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "screen1"),
         config, originalOverlays.RootElement);
     Check(f3.CanPlan && f3.LockedOverlayIds.SequenceEqual(["pinned"]),
-        "F3 preflight retains the original locked overlay metadata");
+        "Preview clear preflight retains the original locked overlay metadata");
     var f3Denied = FreeShowOutputCommandPlanner.Prepare(
         new FreeShowShortcutAction(NativeShortcutCommand.ClearOverlays, "screen1"),
         config);
     Check(!f3Denied.CanPlan && f3Denied.Warnings.Count > 0 &&
           controller.States["screen1"].Overlays.Count == 2,
-        "F3 is refused without actual original overlay lock definitions");
+        "Preview clear refuses missing locked overlay definitions");
     Check((await controller.DispatchPreparedAsync([f3])).Succeeded &&
           controller.States["screen1"].Overlays.SequenceEqual(["pinned"]) &&
           controller.States["screen1"].Effects.Count == 0,
-        "Successful F3 preserves pinned overlay, clears unlocked overlay and effects");
+        "Preview clear preserves pinned overlay, clears unlocked overlay and effects");
+
+    var shortcutClearOverlays = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(
+            NativeShortcutCommand.ClearAllOverlaysForShortcut, "screen1"), config);
+    var shortcutClearEffects = FreeShowOutputCommandPlanner.Prepare(
+        new FreeShowShortcutAction(NativeShortcutCommand.ClearEffects, "screen1"), config);
+    Check(shortcutClearOverlays.CanPlan &&
+          shortcutClearOverlays.RequiredEffects.SequenceEqual([
+              FreeShowSourceEffect.ClearAllOverlays]) &&
+          shortcutClearEffects.RequiredEffects.Contains(
+              FreeShowSourceEffect.RecordTimelineClearOverlays),
+        "Keyboard F3 is source-distinct from locked-overlay-preserving Preview clear");
+    Check((await controller.DispatchPreparedAsync(
+              [shortcutClearOverlays, shortcutClearEffects])).Succeeded &&
+          controller.States["screen1"].Overlays.Count == 0,
+        "Keyboard F3 clears even originally locked overlays as shortcuts.ts specifies");
 
     var globalAudio = FreeShowOutputCommandPlanner.Prepare(
         new FreeShowShortcutAction(NativeShortcutCommand.ClearAudioAndPlaylist, ""), config);
