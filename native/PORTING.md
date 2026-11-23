@@ -66,6 +66,8 @@ If FreeShow uses a custom data directory, choose its actual `Shows` folder.
 
 - **0.0.10 Original operator workspace shell:** source-derived `FreeShowOperatorWorkspaceState` and `FreeShow.Native.Operator/FreeShowOperatorWorkspace` add the original Windows MenuBar/Top/3-column layout/right preview/optional timeline/drawer/Tipbar region structure, saved panel dimensions and a per-page content registry. The actual FreeShow page controls, menus, icons, style themes and keyboard event integration are **not yet** ported. See `UI-STRUCTURE-STATUS.md`. No pixel or runtime parity claim.
 
+- **0.0.11 Source operator components:** original FreeShow top navigation tabs and SVG icon path geometry, English/Korean source labels, page registration wiring, show-title region and renderer-backed slide cards are implemented as partial Avalonia controls. Added a **read-only developer-only** operator comparison executable and a .NET 10 solution. Live click/output control remains disabled until the original complete actions/reveal/overlay semantics are available. Existing menu bar, project tree, media drawer, stage/editor/settings and exact UI styling remain incomplete. See `UI-COMPONENT-STATUS.md`; no runtime or visual parity verification has been performed.
+
 ## Performance acceptance
 - Measure physical click-to-visible change with transitions disabled and a controlled 1080p test; report median/p95/p99, output path and graphics-adapter configuration.
 - Repeat with motion backgrounds, projector, Online output and Stage connected. Separate physical display/D3100/HDMI buffering from application latency.
